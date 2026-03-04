@@ -61,7 +61,3 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
-
-export const balls = () => {
-  return "balls";
-};

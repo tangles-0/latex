@@ -55,6 +55,13 @@ const MEDIA_DIRECT_URL_TTL_SECONDS = Number.parseInt(
   process.env.MEDIA_DIRECT_URL_TTL_SECONDS ?? "120",
   10,
 );
+const TMP_CANDIDATES = [
+  process.env.TANGLEPIC_TMP_DIR,
+  "/dev/shm",
+  "/var/tmp",
+  os.tmpdir(),
+  path.join(process.cwd(), "data", "tmp"),
+].filter((value): value is string => Boolean(value && value.trim().length > 0));
 
 function toWebReadableStream(body: unknown): ReadableStream<Uint8Array> {
   if (!body) {
@@ -160,6 +167,19 @@ function buildStorageKey(
 ): string {
   const { year, month, day } = datePathParts(uploadedAt);
   return path.posix.join("uploads", year, month, day, kind, size, `${baseName}.${ext}`);
+}
+
+async function createWorkingDir(prefix: string): Promise<string> {
+  let lastError: Error | null = null;
+  for (const candidate of TMP_CANDIDATES) {
+    try {
+      await fs.mkdir(candidate, { recursive: true });
+      return await fs.mkdtemp(path.join(candidate, prefix));
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error("Unable to create temp directory.");
+    }
+  }
+  throw lastError ?? new Error("Unable to create temp directory.");
 }
 
 function mediaDirectUrlTtlSeconds(): number {
@@ -353,11 +373,16 @@ async function readKeyRangeStream(
   return Readable.toWeb(createReadStream(absolutePathForKey(key), { start, end })) as ReadableStream<Uint8Array>;
 }
 
-function asPreviewPng(text: string): Promise<Buffer> {
+function asPreviewPng(_text: string): Promise<Buffer> {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768">
   <rect width="100%" height="100%" fill="#111827"/>
   <rect x="24" y="24" width="976" height="720" rx="18" fill="#1f2937" stroke="#374151"/>
-  <text x="512" y="360" font-size="72" text-anchor="middle" fill="#9ca3af" font-family="Arial, sans-serif">${text}</text>
+  <rect x="120" y="180" width="784" height="34" rx="8" fill="#334155"/>
+  <rect x="120" y="240" width="680" height="22" rx="8" fill="#475569"/>
+  <rect x="120" y="282" width="720" height="22" rx="8" fill="#475569"/>
+  <rect x="120" y="324" width="610" height="22" rx="8" fill="#475569"/>
+  <rect x="120" y="366" width="540" height="22" rx="8" fill="#475569"/>
+  <rect x="120" y="440" width="420" height="18" rx="8" fill="#64748b"/>
   </svg>`;
   return sharp(Buffer.from(svg)).png().toBuffer();
 }
@@ -392,11 +417,18 @@ async function asTextPreviewPng(label: string, text: string): Promise<Buffer> {
   <text x="56" y="116" font-size="44" fill="#93c5fd" font-family="Arial, sans-serif">${escapeXml(label)}</text>
   ${lineNodes}
   </svg>`;
-  return sharp(Buffer.from(svg)).png().toBuffer();
+  try {
+    console.log("Generating text preview PNG with fontconfig.");
+    return await sharp(Buffer.from(svg)).png().toBuffer();
+  } catch {
+    // Fall back to a font-free placeholder if fontconfig is unavailable.
+    console.warn("Fontconfig is unavailable, falling back to a font-free placeholder.");
+    return asPreviewPng("File Preview");
+  }
 }
 
 async function tryGeneratePdfPreview(buffer: Buffer): Promise<Buffer | null> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tanglepic-pdf-"));
+  const tmpDir = await createWorkingDir("tanglepic-pdf-");
   const inputPath = path.join(tmpDir, "input.pdf");
   const outputPrefix = path.join(tmpDir, "preview");
   const outputPath = `${outputPrefix}.png`;
@@ -414,7 +446,7 @@ async function tryGeneratePdfPreview(buffer: Buffer): Promise<Buffer | null> {
 }
 
 async function tryGenerateOfficePreview(buffer: Buffer, ext: string): Promise<Buffer | null> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tanglepic-office-"));
+  const tmpDir = await createWorkingDir("tanglepic-office-");
   const inputPath = path.join(tmpDir, `input.${ext}`);
   const pdfPath = path.join(tmpDir, "input.pdf");
   const outputPrefix = path.join(tmpDir, "preview");
@@ -485,10 +517,10 @@ async function tryGenerateVideoPreviewFromStream(input: NodeJS.ReadableStream): 
         "-hide_banner",
         "-loglevel",
         "error",
-        "-ss",
-        "00:00:01",
         "-i",
         "pipe:0",
+        "-ss",
+        "00:00:01",
         "-frames:v",
         "1",
         "-vf",
@@ -524,7 +556,6 @@ async function tryGenerateVideoPreviewFromStream(input: NodeJS.ReadableStream): 
         return;
       }
       if (stderr.length > 0) {
-        // eslint-disable-next-line no-console
         console.warn(`ffmpeg thumbnail generation failed: ${stderr}`);
       }
       resolve(null);
