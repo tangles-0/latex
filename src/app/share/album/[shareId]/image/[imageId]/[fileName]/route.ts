@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getAlbumShareById, getImage } from "@/lib/metadata-store";
-import { getMediaBuffer } from "@/lib/media-storage";
+import { getMediaSignedUrl, getMediaStream, usesS3StorageBackend } from "@/lib/media-storage";
 import { unavailableImageResponse } from "@/lib/unavailable-image";
 
 export const runtime = "nodejs";
@@ -65,14 +65,25 @@ export async function GET(
       return unavailableImageResponse(parsed.ext);
     }
 
-    const data = await getMediaBuffer({
+    if (usesS3StorageBackend()) {
+      const signedUrl = await getMediaSignedUrl({
+        kind: "image",
+        baseName: image.baseName,
+        ext: image.ext,
+        size: parsed.size === "x640" ? "lg" : parsed.size,
+        uploadedAt: new Date(image.uploadedAt),
+        responseContentType: contentTypeForExt(image.ext),
+      });
+      return Response.redirect(signedUrl, 307);
+    }
+    const data = await getMediaStream({
       kind: "image",
       baseName: image.baseName,
       ext: image.ext,
       size: parsed.size === "x640" ? "lg" : parsed.size,
       uploadedAt: new Date(image.uploadedAt),
     });
-    return new Response(new Uint8Array(data), {
+    return new Response(data, {
       headers: publicCacheHeaders(image.ext),
     });
   } catch {

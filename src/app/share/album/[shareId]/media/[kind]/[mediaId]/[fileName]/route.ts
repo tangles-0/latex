@@ -3,10 +3,12 @@ import { getAlbumShareById } from "@/lib/metadata-store";
 import { getMedia, type MediaKind } from "@/lib/media-store";
 import { contentTypeForExt } from "@/lib/media-types";
 import {
-  getMediaBuffer,
-  getMediaBufferRange,
   getMediaBufferSize,
+  getMediaSignedUrl,
+  getMediaRangeStream,
+  getMediaStream,
   pendingVideoPreviewPng,
+  usesS3StorageBackend,
 } from "@/lib/media-storage";
 import { unavailableImageResponse } from "@/lib/unavailable-image";
 
@@ -115,6 +117,19 @@ export async function GET(
       requestedSize === "original" &&
       (media.kind === "video" ||
         (media.kind === "other" && (media.mimeType ?? "").toLowerCase().startsWith("audio/")));
+    if (usesS3StorageBackend()) {
+      const responseExt =
+        requestedSize === "original" ? media.ext : media.kind === "image" ? media.ext : "png";
+      const signedUrl = await getMediaSignedUrl({
+        kind: media.kind,
+        baseName: media.baseName,
+        ext: media.ext,
+        size: requestedSize,
+        uploadedAt: new Date(media.uploadedAt),
+        responseContentType: contentTypeForExt(responseExt),
+      });
+      return withPublicCors(Response.redirect(signedUrl, 307));
+    }
 
     if (isRangeStreamableOriginal) {
       const uploadedAt = new Date(media.uploadedAt);
@@ -139,7 +154,7 @@ export async function GET(
             }),
           );
         }
-        const data = await getMediaBufferRange({
+        const stream = await getMediaRangeStream({
           kind: media.kind,
           baseName: media.baseName,
           ext: media.ext,
@@ -152,11 +167,11 @@ export async function GET(
         headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${total}`);
         headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
         headers.set("Accept-Ranges", "bytes");
-        return withPublicCors(new Response(new Uint8Array(data), { status: 206, headers }));
+        return withPublicCors(new Response(stream, { status: 206, headers }));
       }
     }
 
-    const data = await getMediaBuffer({
+    const stream = await getMediaStream({
       kind: media.kind,
       baseName: media.baseName,
       ext: media.ext,
@@ -169,7 +184,7 @@ export async function GET(
     if (isRangeStreamableOriginal) {
       headers.set("Accept-Ranges", "bytes");
     }
-    return withPublicCors(new Response(new Uint8Array(data), { headers }));
+    return withPublicCors(new Response(stream, { headers }));
   } catch {
     return withPublicCors(await unavailableImageResponse(parsed.ext));
   }

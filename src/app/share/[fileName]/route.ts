@@ -1,10 +1,12 @@
 import type { NextRequest } from "next/server";
 import { getAlbumShareByCode, getImage, getShareByCode } from "@/lib/metadata-store";
 import {
-  getMediaBuffer,
-  getMediaBufferRange,
   getMediaBufferSize,
+  getMediaSignedUrl,
+  getMediaRangeStream,
+  getMediaStream,
   pendingVideoPreviewPng,
+  usesS3StorageBackend,
 } from "@/lib/media-storage";
 import { getSharedMediaByCode, getSharedMediaByCodeAndExt } from "@/lib/media-store";
 import { contentTypeForExt } from "@/lib/media-types";
@@ -126,14 +128,25 @@ export async function GET(
             : parsed.size === "x640"
               ? "lg"
               : parsed.size;
-        const data = await getMediaBuffer({
+        if (usesS3StorageBackend()) {
+          const signedUrl = await getMediaSignedUrl({
+            kind: "image",
+            baseName: image.baseName,
+            ext: image.ext,
+            size: imageRequestedSize,
+            uploadedAt: new Date(image.uploadedAt),
+            responseContentType: contentTypeForExt(image.ext),
+          });
+          return withPublicImageCors(Response.redirect(signedUrl, 307));
+        }
+        const stream = await getMediaStream({
           kind: "image",
           baseName: image.baseName,
           ext: image.ext,
           size: imageRequestedSize,
           uploadedAt: new Date(image.uploadedAt),
         });
-        return withPublicImageCors(new Response(new Uint8Array(data), { headers: publicCacheHeaders(image.ext) }));
+        return withPublicImageCors(new Response(stream, { headers: publicCacheHeaders(image.ext) }));
       }
     }
 
@@ -160,6 +173,19 @@ export async function GET(
       requestedSize === "original" &&
       (media.kind === "video" ||
         (media.kind === "other" && (media.mimeType ?? "").toLowerCase().startsWith("audio/")));
+    if (usesS3StorageBackend()) {
+      const responseExt =
+        requestedSize === "original" ? media.ext : media.kind === "image" ? media.ext : "png";
+      const signedUrl = await getMediaSignedUrl({
+        kind: media.kind,
+        baseName: media.baseName,
+        ext: media.ext,
+        size: requestedSize,
+        uploadedAt: new Date(media.uploadedAt),
+        responseContentType: contentTypeForExt(responseExt),
+      });
+      return withPublicImageCors(Response.redirect(signedUrl, 307));
+    }
     if (isRangeStreamableOriginal) {
       const uploadedAt = new Date(media.uploadedAt);
       const total = await getMediaBufferSize({
@@ -183,7 +209,7 @@ export async function GET(
             }),
           );
         }
-        const data = await getMediaBufferRange({
+        const stream = await getMediaRangeStream({
           kind: media.kind,
           baseName: media.baseName,
           ext: media.ext,
@@ -196,11 +222,11 @@ export async function GET(
         headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${total}`);
         headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
         headers.set("Accept-Ranges", "bytes");
-        return withPublicImageCors(new Response(new Uint8Array(data), { status: 206, headers }));
+        return withPublicImageCors(new Response(stream, { status: 206, headers }));
       }
     }
 
-    const data = await getMediaBuffer({
+    const stream = await getMediaStream({
       kind: media.kind,
       baseName: media.baseName,
       ext: media.ext,
@@ -213,7 +239,7 @@ export async function GET(
     if (isRangeStreamableOriginal) {
       headers.set("Accept-Ranges", "bytes");
     }
-    return withPublicImageCors(new Response(new Uint8Array(data), { headers }));
+    return withPublicImageCors(new Response(stream, { headers }));
   } catch {
     if (!parsed) {
       return withPublicImageCors(new Response("Service temporarily unavailable.", { status: 503 }));

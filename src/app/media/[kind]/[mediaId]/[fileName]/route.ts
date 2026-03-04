@@ -4,10 +4,12 @@ import { authOptions } from "@/lib/auth";
 import { getMediaForUser, type MediaKind } from "@/lib/media-store";
 import { contentTypeForExt } from "@/lib/media-types";
 import {
-  getMediaBuffer,
-  getMediaBufferRange,
   getMediaBufferSize,
+  getMediaSignedUrl,
+  getMediaRangeStream,
+  getMediaStream,
   pendingVideoPreviewPng,
+  usesS3StorageBackend,
 } from "@/lib/media-storage";
 
 export const runtime = "nodejs";
@@ -102,6 +104,19 @@ export async function GET(
       requestedSize === "original" &&
       (parsedKind === "video" ||
         (parsedKind === "other" && (media.mimeType ?? "").toLowerCase().startsWith("audio/")));
+    if (usesS3StorageBackend()) {
+      const responseExt =
+        requestedSize === "original" ? media.ext : parsedKind === "image" ? media.ext : "png";
+      const signedUrl = await getMediaSignedUrl({
+        kind: parsedKind,
+        baseName: media.baseName,
+        ext: media.ext,
+        size: requestedSize,
+        uploadedAt: new Date(media.uploadedAt),
+        responseContentType: contentTypeForExt(responseExt),
+      });
+      return Response.redirect(signedUrl, 307);
+    }
     if (isRangeStreamableOriginal) {
       const uploadedAt = new Date(media.uploadedAt);
       const total = await getMediaBufferSize({
@@ -123,7 +138,7 @@ export async function GET(
             },
           });
         }
-        const data = await getMediaBufferRange({
+        const stream = await getMediaRangeStream({
           kind: parsedKind,
           baseName: media.baseName,
           ext: media.ext,
@@ -132,7 +147,7 @@ export async function GET(
           start: byteRange.start,
           end: byteRange.end,
         });
-        return new Response(new Uint8Array(data), {
+        return new Response(stream, {
           status: 206,
           headers: {
             "Content-Type": contentTypeForExt(media.ext),
@@ -147,7 +162,7 @@ export async function GET(
         });
       }
     }
-    const data = await getMediaBuffer({
+    const stream = await getMediaStream({
       kind: parsedKind,
       baseName: media.baseName,
       ext: media.ext,
@@ -156,7 +171,7 @@ export async function GET(
     });
     const responseExt =
       requestedSize === "original" ? media.ext : parsedKind === "image" ? media.ext : "png";
-    return new Response(new Uint8Array(data), {
+    return new Response(stream, {
       headers: {
         "Content-Type": contentTypeForExt(responseExt),
         ...(isRangeStreamableOriginal ? { "Accept-Ranges": "bytes" } : {}),

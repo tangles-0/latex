@@ -25,6 +25,7 @@
     "@aws-sdk/client-secrets-manager": "^3.954.0",
     "@aws-sdk/client-ssm": "^3.968.0",
     "@aws-sdk/credential-providers": "^3.969.0",
+    "@aws-sdk/s3-request-presigner": "^3.986.0",
     "@energiz3r/icon-library": "^0.0.6",
     "@hookform/resolvers": "^5.2.2",
     "@monaco-editor/react": "^4.7.0",

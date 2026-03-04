@@ -1,7 +1,8 @@
 import path from "path";
 import os from "os";
-import { promises as fs } from "fs";
-import { execFile } from "child_process";
+import { createReadStream, promises as fs } from "fs";
+import { execFile, spawn } from "child_process";
+import { Readable } from "stream";
 import { promisify } from "util";
 import sharp from "sharp";
 import {
@@ -12,6 +13,7 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   CODE_EXTENSIONS,
   CSV_EXTENSIONS,
@@ -49,6 +51,96 @@ const s3Client =
       })
     : null;
 const execFileAsync = promisify(execFile);
+const MEDIA_DIRECT_URL_TTL_SECONDS = Number.parseInt(
+  process.env.MEDIA_DIRECT_URL_TTL_SECONDS ?? "120",
+  10,
+);
+
+function toWebReadableStream(body: unknown): ReadableStream<Uint8Array> {
+  if (!body) {
+    throw new Error("Storage response body is empty.");
+  }
+  if (typeof (body as { transformToWebStream?: unknown }).transformToWebStream === "function") {
+    return (body as { transformToWebStream: () => ReadableStream<Uint8Array> }).transformToWebStream();
+  }
+  if (body instanceof Readable) {
+    return Readable.toWeb(body) as ReadableStream<Uint8Array>;
+  }
+  if (typeof (body as { getReader?: unknown }).getReader === "function") {
+    return body as ReadableStream<Uint8Array>;
+  }
+  if (typeof (body as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function") {
+    const iterator = (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator]();
+    return new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const next = await iterator.next();
+        if (next.done) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(next.value);
+      },
+      async cancel() {
+        if (typeof iterator.return === "function") {
+          await iterator.return();
+        }
+      },
+    });
+  }
+  throw new Error("Unsupported storage response stream type.");
+}
+
+function isAsyncIterableUint8Array(value: unknown): value is AsyncIterable<Uint8Array> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function"
+  );
+}
+
+function webReaderToAsyncIterable(reader: {
+  read: () => Promise<{ done: boolean; value?: Uint8Array }>;
+  releaseLock?: () => void;
+}): AsyncIterable<Uint8Array> {
+  return {
+    [Symbol.asyncIterator]() {
+      return {
+        async next() {
+          const result = await reader.read();
+          if (result.done) {
+            return { done: true, value: undefined as Uint8Array | undefined };
+          }
+          return { done: false, value: result.value ?? new Uint8Array() };
+        },
+        async return() {
+          if (typeof reader.releaseLock === "function") {
+            reader.releaseLock();
+          }
+          return { done: true, value: undefined as Uint8Array | undefined };
+        },
+      };
+    },
+  };
+}
+
+async function readWebStreamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
+  const reader = stream.getReader();
+  const chunks: Buffer[] = [];
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      if (result.value) {
+        chunks.push(Buffer.from(result.value));
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks);
+}
 
 function datePathParts(uploadedAt: Date): { year: string; month: string; day: string } {
   return {
@@ -67,6 +159,28 @@ function buildStorageKey(
 ): string {
   const { year, month, day } = datePathParts(uploadedAt);
   return path.posix.join("uploads", year, month, day, kind, size, `${baseName}.${ext}`);
+}
+
+function mediaDirectUrlTtlSeconds(): number {
+  if (!Number.isFinite(MEDIA_DIRECT_URL_TTL_SECONDS) || MEDIA_DIRECT_URL_TTL_SECONDS <= 0) {
+    return 120;
+  }
+  return Math.max(30, Math.min(900, MEDIA_DIRECT_URL_TTL_SECONDS));
+}
+
+function mediaStorageKey(input: {
+  kind: "image" | "video" | "document" | "other";
+  baseName: string;
+  ext: string;
+  size: MediaSize;
+  uploadedAt: Date;
+}): string {
+  const requestedExt = input.kind === "image" || input.size === "original" ? input.ext : "png";
+  return buildStorageKey(input.kind, input.baseName, requestedExt, input.size, input.uploadedAt);
+}
+
+export function usesS3StorageBackend(): boolean {
+  return STORAGE_BACKEND === "s3" && Boolean(s3Client && S3_BUCKET);
 }
 
 function absolutePathForKey(key: string): string {
@@ -154,12 +268,7 @@ async function readKey(key: string): Promise<Buffer> {
         Key: key,
       }),
     );
-    const chunks: Buffer[] = [];
-    const stream = response.Body as AsyncIterable<Uint8Array>;
-    for await (const chunk of stream) {
-      chunks.push(Buffer.from(chunk));
-    }
-    return Buffer.concat(chunks);
+    return readWebStreamToBuffer(toWebReadableStream(response.Body));
   }
   return fs.readFile(absolutePathForKey(key));
 }
@@ -193,12 +302,7 @@ async function readKeyRange(key: string, start: number, end: number): Promise<Bu
         Range: `bytes=${start}-${end}`,
       }),
     );
-    const chunks: Buffer[] = [];
-    const stream = response.Body as AsyncIterable<Uint8Array>;
-    for await (const chunk of stream) {
-      chunks.push(Buffer.from(chunk));
-    }
-    return Buffer.concat(chunks);
+    return readWebStreamToBuffer(toWebReadableStream(response.Body));
   }
   const length = end - start + 1;
   const handle = await fs.open(absolutePathForKey(key), "r");
@@ -209,6 +313,43 @@ async function readKeyRange(key: string, start: number, end: number): Promise<Bu
   } finally {
     await handle.close();
   }
+}
+
+async function readKeyStream(key: string): Promise<ReadableStream<Uint8Array>> {
+  if (STORAGE_BACKEND === "s3") {
+    if (!s3Client || !S3_BUCKET) {
+      throw new Error("S3 is not configured.");
+    }
+    const response = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+      }),
+    );
+    return toWebReadableStream(response.Body);
+  }
+  return Readable.toWeb(createReadStream(absolutePathForKey(key))) as ReadableStream<Uint8Array>;
+}
+
+async function readKeyRangeStream(
+  key: string,
+  start: number,
+  end: number,
+): Promise<ReadableStream<Uint8Array>> {
+  if (STORAGE_BACKEND === "s3") {
+    if (!s3Client || !S3_BUCKET) {
+      throw new Error("S3 is not configured.");
+    }
+    const response = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+        Range: `bytes=${start}-${end}`,
+      }),
+    );
+    return toWebReadableStream(response.Body);
+  }
+  return Readable.toWeb(createReadStream(absolutePathForKey(key), { start, end })) as ReadableStream<Uint8Array>;
 }
 
 function asPreviewPng(text: string): Promise<Buffer> {
@@ -335,34 +476,105 @@ async function tryGenerateDocumentPreview(
   return null;
 }
 
-async function tryGenerateVideoPreview(originalVideoBuffer: Buffer): Promise<Buffer | null> {
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "tanglepic-video-"));
-  const inputPath = path.join(tmpDir, "input-video");
-  const outputPath = path.join(tmpDir, "preview.png");
-  try {
-    await fs.writeFile(inputPath, originalVideoBuffer);
-    await execFileAsync(
+async function tryGenerateVideoPreviewFromStream(input: NodeJS.ReadableStream): Promise<Buffer | null> {
+  return new Promise((resolve) => {
+    const ffmpeg = spawn(
       "ffmpeg",
       [
-        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
         "-ss",
         "00:00:01",
         "-i",
-        inputPath,
+        "pipe:0",
         "-frames:v",
         "1",
         "-vf",
         "scale='min(1024,iw)':-2",
-        outputPath,
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "png",
+        "pipe:1",
       ],
-      { timeout: 30_000 },
+      { stdio: ["pipe", "pipe", "pipe"] },
     );
-    return await fs.readFile(outputPath);
-  } catch {
-    return null;
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+    const chunks: Buffer[] = [];
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      ffmpeg.kill("SIGKILL");
+    }, 30_000);
+
+    ffmpeg.stdout.on("data", (chunk: Buffer) => {
+      chunks.push(Buffer.from(chunk));
+    });
+    ffmpeg.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    ffmpeg.once("error", () => {
+      clearTimeout(timeout);
+      resolve(null);
+    });
+    ffmpeg.once("close", (code) => {
+      clearTimeout(timeout);
+      if (code === 0 && chunks.length > 0) {
+        resolve(Buffer.concat(chunks));
+        return;
+      }
+      if (stderr.length > 0) {
+        // eslint-disable-next-line no-console
+        console.warn(`ffmpeg thumbnail generation failed: ${stderr}`);
+      }
+      resolve(null);
+    });
+    input.once("error", () => {
+      ffmpeg.kill("SIGKILL");
+      clearTimeout(timeout);
+      resolve(null);
+    });
+    ffmpeg.stdin.on("error", () => {
+      // ignore broken pipe; close handler resolves outcome.
+    });
+    input.pipe(ffmpeg.stdin);
+  });
+}
+
+async function openKeyNodeStream(key: string): Promise<NodeJS.ReadableStream> {
+  if (STORAGE_BACKEND === "s3") {
+    if (!s3Client || !S3_BUCKET) {
+      throw new Error("S3 is not configured.");
+    }
+    const response = await s3Client.send(
+      new GetObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: key,
+      }),
+    );
+    const body = response.Body;
+    if (!body) {
+      throw new Error("Storage response body is empty.");
+    }
+    if (body instanceof Readable) {
+      return body;
+    }
+    if (typeof (body as { getReader?: unknown }).getReader === "function") {
+      const reader = (
+        body as {
+          getReader: () => {
+            read: () => Promise<{ done: boolean; value?: Uint8Array }>;
+            releaseLock?: () => void;
+          };
+        }
+      ).getReader();
+      return Readable.from(webReaderToAsyncIterable(reader));
+    }
+    if (isAsyncIterableUint8Array(body)) {
+      return Readable.from(body);
+    }
+    throw new Error("Unsupported storage response stream type.");
   }
+  return createReadStream(absolutePathForKey(key));
 }
 
 export async function pendingVideoPreviewPng(size: Exclude<MediaSize, "original">): Promise<Buffer> {
@@ -611,8 +823,7 @@ export async function getMediaBuffer(input: {
   size: MediaSize;
   uploadedAt: Date;
 }): Promise<Buffer> {
-  const requestedExt = input.kind === "image" || input.size === "original" ? input.ext : "png";
-  const key = buildStorageKey(input.kind, input.baseName, requestedExt, input.size, input.uploadedAt);
+  const key = mediaStorageKey(input);
   return await readKey(key);
 }
 
@@ -623,8 +834,7 @@ export async function getMediaBufferSize(input: {
   size: MediaSize;
   uploadedAt: Date;
 }): Promise<number> {
-  const requestedExt = input.kind === "image" || input.size === "original" ? input.ext : "png";
-  const key = buildStorageKey(input.kind, input.baseName, requestedExt, input.size, input.uploadedAt);
+  const key = mediaStorageKey(input);
   return getKeySize(key);
 }
 
@@ -637,9 +847,60 @@ export async function getMediaBufferRange(input: {
   start: number;
   end: number;
 }): Promise<Buffer> {
-  const requestedExt = input.kind === "image" || input.size === "original" ? input.ext : "png";
-  const key = buildStorageKey(input.kind, input.baseName, requestedExt, input.size, input.uploadedAt);
+  const key = mediaStorageKey(input);
   return readKeyRange(key, input.start, input.end);
+}
+
+export async function getMediaStream(input: {
+  kind: "image" | "video" | "document" | "other";
+  baseName: string;
+  ext: string;
+  size: MediaSize;
+  uploadedAt: Date;
+}): Promise<ReadableStream<Uint8Array>> {
+  const key = mediaStorageKey(input);
+  return readKeyStream(key);
+}
+
+export async function getMediaRangeStream(input: {
+  kind: "image" | "video" | "document" | "other";
+  baseName: string;
+  ext: string;
+  size: MediaSize;
+  uploadedAt: Date;
+  start: number;
+  end: number;
+}): Promise<ReadableStream<Uint8Array>> {
+  const key = mediaStorageKey(input);
+  return readKeyRangeStream(key, input.start, input.end);
+}
+
+export async function getMediaSignedUrl(input: {
+  kind: "image" | "video" | "document" | "other";
+  baseName: string;
+  ext: string;
+  size: MediaSize;
+  uploadedAt: Date;
+  responseContentType?: string;
+}): Promise<string> {
+  if (!s3Client || !S3_BUCKET) {
+    throw new Error("S3 is not configured.");
+  }
+  const key = mediaStorageKey(input);
+  const presign = getSignedUrl as unknown as (
+    client: unknown,
+    command: unknown,
+    options: { expiresIn: number },
+  ) => Promise<string>;
+  return presign(
+    s3Client,
+    new GetObjectCommand({
+      Bucket: S3_BUCKET,
+      Key: key,
+      ...(input.responseContentType ? { ResponseContentType: input.responseContentType } : {}),
+    }),
+    { expiresIn: mediaDirectUrlTtlSeconds() },
+  );
 }
 
 export async function generateVideoPreviewFromStoredMedia(input: {
@@ -647,14 +908,9 @@ export async function generateVideoPreviewFromStoredMedia(input: {
   ext: string;
   uploadedAt: Date;
 }): Promise<{ sizeSm: number; sizeLg: number; width?: number; height?: number }> {
-  const originalBuffer = await getMediaBuffer({
-    kind: "video",
-    baseName: input.baseName,
-    ext: input.ext,
-    size: "original",
-    uploadedAt: input.uploadedAt,
-  });
-  const videoFrame = await tryGenerateVideoPreview(originalBuffer);
+  const originalKey = buildStorageKey("video", input.baseName, input.ext, "original", input.uploadedAt);
+  const originalStream = await openKeyNodeStream(originalKey);
+  const videoFrame = await tryGenerateVideoPreviewFromStream(originalStream);
   const lgBufferSource = videoFrame ?? (await asPreviewPng("Video Preview"));
   const lgBuffer = await sharp(lgBufferSource)
     .resize({ width: 1024, withoutEnlargement: true })
