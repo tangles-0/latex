@@ -4,10 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 
+function getFormString(formData: FormData, key: string): string | null {
+  const value = formData.get(key);
+  return typeof value === "string" ? value : null;
+}
+
 export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean }) {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [signUpError, setSignUpError] = useState<string | null>(null);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotSuccess, setForgotSuccess] = useState<string | null>(null);
   const router = useRouter();
 
   async function handleSignUp(event: React.FormEvent<HTMLFormElement>) {
@@ -15,10 +22,10 @@ export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean 
     setSignUpError(null);
 
     const formData = new FormData(event.currentTarget);
-    const username = formData.get("signupUsername")?.toString().trim();
-    const email = formData.get("signupEmail")?.toString().trim();
-    const password = formData.get("signupPassword")?.toString();
-    const confirmPassword = formData.get("signupConfirmPassword")?.toString();
+    const username = getFormString(formData, "signupUsername")?.trim();
+    const email = getFormString(formData, "signupEmail")?.trim();
+    const password = getFormString(formData, "signupPassword") ?? undefined;
+    const confirmPassword = getFormString(formData, "signupConfirmPassword") ?? undefined;
 
     if (!username || !email || !password || !confirmPassword) {
       setSignUpError("bruh");
@@ -71,8 +78,8 @@ export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean 
     setSignInError(null);
 
     const formData = new FormData(event.currentTarget);
-    const email = formData.get("email")?.toString().trim();
-    const password = formData.get("password")?.toString();
+    const email = getFormString(formData, "email")?.trim();
+    const password = getFormString(formData, "password") ?? undefined;
 
     if (!email || !password) {
       setSignInError("Email and password are required.");
@@ -93,6 +100,39 @@ export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean 
     router.push("/gallery");
   }
 
+  async function handleForgotPassword(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setForgotError(null);
+    setForgotSuccess(null);
+
+    const formData = new FormData(event.currentTarget);
+    const email = getFormString(formData, "forgotEmail")?.trim();
+
+    if (!email) {
+      setForgotError("Email is required.");
+      return;
+    }
+
+    const response = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      setForgotError(payload.error ?? "Unable to process password reset request.");
+      return;
+    }
+
+    const payload = (await response.json()) as { message?: string; emailSent?: boolean };
+    const suffix =
+      payload.emailSent === false
+        ? " Resend is not configured, so for local dev check server logs for the reset link."
+        : "";
+    setForgotSuccess((payload.message ?? "If that account exists, a reset link has been sent.") + suffix);
+  }
+
   return (
     <section className="space-y-4 rounded-md border border-neutral-200 p-4">
       <div className="flex flex-wrap gap-2 text-xs">
@@ -101,6 +141,8 @@ export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean 
           onClick={() => {
             setMode("login");
             setSignUpError(null);
+            setForgotError(null);
+            setForgotSuccess(null);
           }}
           className={`rounded px-3 py-1 ${
             mode === "login" ? "bg-black text-white" : "border border-neutral-200"
@@ -113,6 +155,8 @@ export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean 
           onClick={() => {
             setMode("signup");
             setSignInError(null);
+            setForgotError(null);
+            setForgotSuccess(null);
           }}
           className={`rounded px-3 py-1 ${
             mode === "signup" ? "bg-black text-white" : "border border-neutral-200"
@@ -179,6 +223,35 @@ export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean 
             ) : null}
           </form>
         </div>
+      ) : mode === "forgot" ? (
+        <div key="forgot" className="space-y-3">
+          <h2 className="text-lg font-medium">forgot ur password?</h2>
+          <form onSubmit={handleForgotPassword} className="space-y-3">
+            <input
+              name="forgotEmail"
+              type="email"
+              placeholder="ur email addy"
+              autoComplete="email"
+              className="w-full rounded border px-2 py-1"
+            />
+            <button className="rounded bg-black px-4 py-2 text-white" type="submit">
+              send reset link
+            </button>
+            <button
+              type="button"
+              className="block text-xs text-neutral-600 underline"
+              onClick={() => {
+                setMode("login");
+                setForgotError(null);
+                setForgotSuccess(null);
+              }}
+            >
+              back to login
+            </button>
+            {forgotError ? <p className="text-xs text-red-600">{forgotError}</p> : null}
+            {forgotSuccess ? <p className="text-xs text-emerald-600">{forgotSuccess}</p> : null}
+          </form>
+        </div>
       ) : (
         <div key="login" className="space-y-3">
           <h2 className="text-lg font-medium">the legend returns</h2>
@@ -199,6 +272,16 @@ export default function AuthForms({ signupsEnabled }: { signupsEnabled: boolean 
             />
             <button className="rounded bg-black px-4 py-2 text-white" type="submit">
               let me in already
+            </button>
+            <button
+              type="button"
+              className="block text-xs text-neutral-600 underline"
+              onClick={() => {
+                setMode("forgot");
+                setSignInError(null);
+              }}
+            >
+              forgot password?
             </button>
             {signInError ? (
               <p className="text-xs text-red-600">{signInError}</p>

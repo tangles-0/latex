@@ -98,6 +98,7 @@ export class AppStack extends cdk.Stack {
         RATE_LIMIT_MAX_ATTEMPTS: "20",
         BILLING_ROLE_ARN: billingReaderRole.roleArn,
         BILLING_CE_REGION: "us-east-1",
+        PASSWORD_RESET_TOKEN_TTL_MINUTES: "30",
       },
       secrets: {
         NEXTAUTH_SECRET: ecs.Secret.fromSecretsManager(props.appSecret, "NEXTAUTH_SECRET"),
@@ -105,6 +106,7 @@ export class AppStack extends cdk.Stack {
         DB_PUSH_PW: ecs.Secret.fromSecretsManager(props.appSecret, "DB_PUSH_PW"),
         PGUSER: ecs.Secret.fromSecretsManager(props.dbCredentialsSecret, "username"),
         PGPASSWORD: ecs.Secret.fromSecretsManager(props.dbCredentialsSecret, "password"),
+        RESEND_API_KEY: ecs.Secret.fromSecretsManager(props.appSecret, "RESEND_API_KEY"),
       },
       readonlyRootFilesystem: true,
     });

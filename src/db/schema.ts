@@ -41,6 +41,8 @@ export const users = pgTable("users", {
   username: text("username").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  passwordResetTokenHash: text("password_reset_token_hash"),
+  passwordResetTokenExpiresAt: timestamp("password_reset_token_expires_at", { mode: "date" }),
   groupId: text("group_id").references(() => groups.id),
   theme: text("theme").notNull().default("dark"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull(),
