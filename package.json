@@ -7,7 +7,7 @@
     "dev-quick": "next dev --turbopack -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "pnpm exec eslint",
     "db:push": "drizzle-kit push --config ./drizzle.config.ts",
     "db:push:force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "cdk:install": "pnpm --dir infra/cdk install",
@@ -78,10 +78,11 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "eslint": "^9.37.0",
-    "eslint-config-next": "15.5.4",
+    "eslint-config-next": "^16.1.6",
     "prettier": "^3.8.0",
     "tailwindcss": "^4.1.14",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
   },
   "packageManager": "pnpm@10.16.1+sha512.0e155aa2629db8672b49e8475da6226aa4bdea85fdcdfdc15350874946d4f3c91faaf64cbdc4a5d1ab8002f473d5c3fcedcd197989cf0390f9badd3c04678706"
 }

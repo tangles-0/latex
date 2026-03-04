@@ -10,7 +10,6 @@ export default function GlobalAppError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.error(error);
   }, [error]);
 

@@ -68,7 +68,7 @@ type InitInput = {
 function mapSession(row: typeof uploadSessions.$inferSelect): UploadSessionEntry {
   let uploadedParts: Record<string, string> = {};
   try {
-    uploadedParts = JSON.parse(row.uploadedPartsJson);
+    uploadedParts = JSON.parse(row.uploadedPartsJson) as Record<string, string>;
   } catch {
     uploadedParts = {};
   }

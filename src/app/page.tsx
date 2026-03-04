@@ -37,6 +37,7 @@ export default async function Home() {
         <div className="relative">
           <h1 className="text-2xl font-semibold mt-1">latex <span className="font-medium text-neutral-500">img_srv</span></h1>
           <div className="absolute top-[-15px] left-[-22px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/latex-logo.png" alt="latex" width="32px" className="latex-logo z-5" />
           </div>
         </div>

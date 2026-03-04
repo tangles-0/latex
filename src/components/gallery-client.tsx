@@ -237,6 +237,7 @@ export default function GalleryClient({
       window.removeEventListener("dragleave", handleDragLeave);
       window.removeEventListener("drop", handleDrop);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredItems = useMemo(
@@ -1128,6 +1129,7 @@ export default function GalleryClient({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, activeIndex, displayItems, hasNext, hasPrevious]);
 
   return (
@@ -1300,6 +1302,7 @@ export default function GalleryClient({
                   </div>
                 ) : (
                   <div className="relative mt-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image.thumbUrl}
                       alt="Uploaded"

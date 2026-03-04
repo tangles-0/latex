@@ -22,6 +22,9 @@ export function FileViewerContent({
   onRegenerateThumbnail?: () => void;
   isRegeneratingThumbnail?: boolean;
 }) {
+
+  const iconClass = "h-12 w-12 text-neutral-500";
+
   if (kind === "video") {
     return (
       <div className="space-y-2">
@@ -57,12 +60,13 @@ export function FileViewerContent({
       const Icon = getFileIconForExtension(ext);
       return (
         <div className="flex sm:max-h-[60vh] min-h-[320px] w-full items-center justify-center rounded border border-neutral-200 bg-neutral-50">
-          <Icon className="h-12 w-12 text-neutral-500" fill="currentColor" />
+          <Icon className={iconClass} fill="currentColor" />
         </div>
       );
     }
     return (
       <a href={fullUrl} target="_blank" rel="noopener noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={previewUrl}
           alt="Document preview"
@@ -78,7 +82,7 @@ export function FileViewerContent({
         <div className="flex items-center justify-center">
           {(() => {
             const Icon = getFileIconForExtension(ext);
-            return <Icon className="h-12 w-12 text-neutral-500" fill="currentColor" />;
+            return <Icon className={iconClass} fill="currentColor" />;
           })()}
         </div>
         <audio src={fullUrl} controls className="w-full" preload="metadata" />
@@ -88,7 +92,7 @@ export function FileViewerContent({
   const Icon = getFileIconForExtension(ext);
   return (
     <div className="flex sm:max-h-[60vh] min-h-[320px] w-full items-center justify-center rounded border border-neutral-200 bg-neutral-50">
-      <Icon className="h-12 w-12 text-neutral-500" fill="currentColor" />
+      <Icon className={iconClass} fill="currentColor" />
     </div>
   );
 }

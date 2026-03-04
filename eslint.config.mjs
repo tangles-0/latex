@@ -1,19 +1,60 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig, globalIgnores } from 'eslint/config';
+import nextVitals from 'eslint-config-next/core-web-vitals'
+import tseslint from 'typescript-eslint';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+export default defineConfig([
+  ...nextVitals,
+  tseslint.configs.recommendedTypeChecked,
   {
-    ignores: ["src/generated/**/*"]
-  }
-];
-
-export default eslintConfig;
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      parserOptions: {
+        projectService: true,
+      },
+    },
+  },
+  {
+    settings: {
+      react: { version: "19" } // Avoids auto-detection crash
+    },
+    rules: {
+      'import/no-dynamic-require': 'warn',
+      'import/no-unused-modules': 'warn',
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          args: "all",
+          argsIgnorePattern: "^_",
+          caughtErrors: "all",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          ignoreRestSiblings: true
+        }
+      ],
+      "@typescript-eslint/no-confusing-void-expression": [
+        "error",
+        {
+          ignoreArrowShorthand: true
+        }
+      ],
+      "@typescript-eslint/no-misused-promises": [
+        "error",
+        {
+          checksVoidReturn: {
+            attributes: false
+          }
+        }
+      ]
+    },
+  },
+  globalIgnores([
+    '.next/**',
+    'out/**',
+    'build/**',
+    'next-env.d.ts',
+    "**/*.js", "**/*.cjs", "**/*.mjs",
+    '*.config.ts'
+  ]),
+]);

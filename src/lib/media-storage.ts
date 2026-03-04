@@ -112,6 +112,7 @@ function webReaderToAsyncIterable(reader: {
           }
           return { done: false, value: result.value ?? new Uint8Array() };
         },
+        // eslint-disable-next-line @typescript-eslint/require-await
         async return() {
           if (typeof reader.releaseLock === "function") {
             reader.releaseLock();
@@ -935,4 +936,3 @@ export async function generateVideoPreviewFromStoredMedia(input: {
 export async function readCompletedUploadBuffer(storageKey: string): Promise<Buffer> {
   return readKey(storageKey);
 }
-
