@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { getAlbumShareByCode, getImage, getShareByCode } from "@/lib/metadata-store";
+import { getAlbumShareByCode, getAppSettings, getImage, getShareByCode } from "@/lib/metadata-store";
 import {
   getMediaBufferSize,
   getMediaSignedUrl,
@@ -58,6 +58,60 @@ function publicCacheHeaders(ext: string): Headers {
   });
 }
 
+function isDocumentNavigation(request: NextRequest): boolean {
+  const destination = request.headers.get("sec-fetch-dest");
+  const mode = request.headers.get("sec-fetch-mode");
+  const accept = request.headers.get("accept") ?? "";
+  return destination === "document" || mode === "navigate" || accept.includes("text/html");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function signedMediaViewerHtml(input: { src: string; mimeType: string; fileName: string }): string {
+  const safeSrc = escapeHtml(input.src);
+  const safeName = escapeHtml(input.fileName);
+  const type = input.mimeType.toLowerCase();
+  const body = type.startsWith("image/")
+    ? `<img src="${safeSrc}" alt="${safeName}" style="max-width:100%;max-height:100%;object-fit:contain" />`
+    : type.startsWith("video/")
+      ? `<video controls autoplay style="max-width:100%;max-height:100%" src="${safeSrc}"></video>`
+      : type.startsWith("audio/")
+        ? `<audio controls autoplay style="width:min(720px,100%)" src="${safeSrc}"></audio>`
+        : `<p><a href="${safeSrc}" rel="noopener noreferrer">Open file</a></p>`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeName}</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0b0b0c;
+        color: #e5e7eb;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    ${body}
+  </body>
+</html>`;
+}
+
 function parseByteRange(rangeHeader: string, total: number): { start: number; end: number } | null {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
   if (!match) {
@@ -91,6 +145,9 @@ export async function GET(
 ): Promise<Response> {
   const { fileName } = await params;
   const parsed = parseFileName(fileName);
+  const allowHtmlNavigationMode = usesS3StorageBackend()
+    ? (await getAppSettings()).shareHtmlNavigationEnabled
+    : false;
   try {
     if (!parsed && /^[A-Za-z0-9]+$/.test(fileName)) {
       const albumShare = await getAlbumShareByCode(fileName);
@@ -129,14 +186,31 @@ export async function GET(
               ? "lg"
               : parsed.size;
         if (usesS3StorageBackend()) {
+          const responseExt = imageRequestedSize === "original" ? image.ext : "png";
+          const mimeType = contentTypeForExt(responseExt);
           const signedUrl = await getMediaSignedUrl({
             kind: "image",
             baseName: image.baseName,
             ext: image.ext,
             size: imageRequestedSize,
             uploadedAt: new Date(image.uploadedAt),
-            responseContentType: contentTypeForExt(image.ext),
+            responseContentType: mimeType,
           });
+          if (allowHtmlNavigationMode && isDocumentNavigation(request)) {
+            const html = signedMediaViewerHtml({
+              src: signedUrl,
+              mimeType,
+              fileName,
+            });
+            return withPublicImageCors(
+              new Response(html, {
+                headers: {
+                  "Content-Type": "text/html; charset=utf-8",
+                  "Cache-Control": "no-store",
+                },
+              }),
+            );
+          }
           return withPublicImageCors(Response.redirect(signedUrl, 307));
         }
         const stream = await getMediaStream({
@@ -176,14 +250,30 @@ export async function GET(
     if (usesS3StorageBackend()) {
       const responseExt =
         requestedSize === "original" ? media.ext : media.kind === "image" ? media.ext : "png";
+      const mimeType = contentTypeForExt(responseExt);
       const signedUrl = await getMediaSignedUrl({
         kind: media.kind,
         baseName: media.baseName,
         ext: media.ext,
         size: requestedSize,
         uploadedAt: new Date(media.uploadedAt),
-        responseContentType: contentTypeForExt(responseExt),
+        responseContentType: mimeType,
       });
+      if (allowHtmlNavigationMode && isDocumentNavigation(request)) {
+        const html = signedMediaViewerHtml({
+          src: signedUrl,
+          mimeType,
+          fileName,
+        });
+        return withPublicImageCors(
+          new Response(html, {
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-store",
+            },
+          }),
+        );
+      }
       return withPublicImageCors(Response.redirect(signedUrl, 307));
     }
     if (isRangeStreamableOriginal) {

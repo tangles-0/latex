@@ -48,6 +48,24 @@ export class DataStack extends cdk.Stack {
       lifecycleRules: imageBucketLifecycleRules,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       autoDeleteObjects: false,
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+          allowedOrigins: ["*"],
+          allowedHeaders: ["*"],
+          exposedHeaders: [
+            "Accept-Ranges",
+            "Content-Length",
+            "Content-Range",
+            "Content-Type",
+            "ETag",
+            "Last-Modified",
+            "x-amz-request-id",
+            "x-amz-id-2",
+          ],
+          maxAge: 3600,
+        },
+      ],
     });
 
     const dbSecurityGroup = new ec2.SecurityGroup(this, "DbSecurityGroup", {

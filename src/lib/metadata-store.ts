@@ -1438,6 +1438,7 @@ export type AppSettings = {
   supportEnabled: boolean;
   signupsEnabled: boolean;
   uploadsEnabled: boolean;
+  shareHtmlNavigationEnabled: boolean;
   resumableThresholdBytes: number;
   updatedAt: string;
 };
@@ -1450,6 +1451,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   supportEnabled: true,
   signupsEnabled: true,
   uploadsEnabled: true,
+  shareHtmlNavigationEnabled: true,
   resumableThresholdBytes: 64 * 1024 * 1024,
   updatedAt: new Date(0).toISOString(),
 };
@@ -1467,6 +1469,7 @@ export async function getAppSettings(): Promise<AppSettings> {
       supportEnabled: DEFAULT_SETTINGS.supportEnabled,
       signupsEnabled: DEFAULT_SETTINGS.signupsEnabled,
       uploadsEnabled: DEFAULT_SETTINGS.uploadsEnabled,
+      shareHtmlNavigationEnabled: DEFAULT_SETTINGS.shareHtmlNavigationEnabled,
       resumableThresholdBytes: DEFAULT_SETTINGS.resumableThresholdBytes,
       updatedAt: now,
     });
@@ -1480,6 +1483,7 @@ export async function getAppSettings(): Promise<AppSettings> {
     supportEnabled: row.supportEnabled,
     signupsEnabled: row.signupsEnabled,
     uploadsEnabled: row.uploadsEnabled,
+    shareHtmlNavigationEnabled: row.shareHtmlNavigationEnabled,
     resumableThresholdBytes: row.resumableThresholdBytes,
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -1493,6 +1497,7 @@ export async function updateAppSettings(input: {
   supportEnabled?: boolean;
   signupsEnabled?: boolean;
   uploadsEnabled?: boolean;
+  shareHtmlNavigationEnabled?: boolean;
   resumableThresholdBytes?: number;
 }): Promise<AppSettings> {
   const existing = await getAppSettings();
@@ -1522,6 +1527,10 @@ export async function updateAppSettings(input: {
         typeof input.uploadsEnabled === "boolean"
           ? input.uploadsEnabled
           : existing.uploadsEnabled,
+      shareHtmlNavigationEnabled:
+        typeof input.shareHtmlNavigationEnabled === "boolean"
+          ? input.shareHtmlNavigationEnabled
+          : existing.shareHtmlNavigationEnabled,
       resumableThresholdBytes:
         typeof input.resumableThresholdBytes === "number"
           ? input.resumableThresholdBytes
@@ -1539,6 +1548,7 @@ export async function updateAppSettings(input: {
     supportEnabled: row.supportEnabled,
     signupsEnabled: row.signupsEnabled,
     uploadsEnabled: row.uploadsEnabled,
+    shareHtmlNavigationEnabled: row.shareHtmlNavigationEnabled,
     resumableThresholdBytes: row.resumableThresholdBytes,
     updatedAt: row.updatedAt.toISOString(),
   };

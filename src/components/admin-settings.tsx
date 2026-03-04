@@ -10,6 +10,7 @@ type AppSettings = {
   supportEnabled: boolean;
   signupsEnabled: boolean;
   uploadsEnabled: boolean;
+  shareHtmlNavigationEnabled: boolean;
   resumableThresholdBytes: number;
 };
 
@@ -34,6 +35,9 @@ export default function AdminSettings({ initial }: { initial: AppSettings }) {
   const [supportEnabled, setSupportEnabled] = useState(initial.supportEnabled);
   const [signupsEnabled, setSignupsEnabled] = useState(initial.signupsEnabled);
   const [uploadsEnabled, setUploadsEnabled] = useState(initial.uploadsEnabled);
+  const [shareHtmlNavigationEnabled, setShareHtmlNavigationEnabled] = useState(
+    initial.shareHtmlNavigationEnabled,
+  );
   const [resumableThresholdMb, setResumableThresholdMb] = useState(
     Math.max(1, Math.round(initial.resumableThresholdBytes / (1024 * 1024))),
   );
@@ -57,6 +61,7 @@ export default function AdminSettings({ initial }: { initial: AppSettings }) {
         supportEnabled,
         signupsEnabled,
         uploadsEnabled,
+        shareHtmlNavigationEnabled,
         resumableThresholdBytes: Math.max(1024 * 1024, Number(resumableThresholdMb) * 1024 * 1024),
       }),
     });
@@ -143,7 +148,7 @@ export default function AdminSettings({ initial }: { initial: AppSettings }) {
           />
         </label>
       </div>
-      <div className="grid gap-3 md:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-4">
         <label className="flex items-center gap-2 text-xs">
           <input
             type="checkbox"
@@ -167,6 +172,14 @@ export default function AdminSettings({ initial }: { initial: AppSettings }) {
             onChange={(event) => setUploadsEnabled(event.target.checked)}
           />
           Enable uploads
+        </label>
+        <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={shareHtmlNavigationEnabled}
+            onChange={(event) => setShareHtmlNavigationEnabled(event.target.checked)}
+          />
+          Keep `/share/...` URL on open (S3 backend only)
         </label>
       </div>
       <div className="flex items-center gap-3 text-xs">

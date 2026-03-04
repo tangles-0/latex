@@ -29,6 +29,7 @@ export const appSettings = pgTable("app_settings", {
   supportEnabled: boolean("support_enabled").notNull().default(true),
   signupsEnabled: boolean("signups_enabled").notNull().default(true),
   uploadsEnabled: boolean("uploads_enabled").notNull().default(true),
+  shareHtmlNavigationEnabled: boolean("share_html_navigation_enabled").notNull().default(true),
   resumableThresholdBytes: bigint("resumable_threshold_bytes", { mode: "number" })
     .notNull()
     .default(64 * 1024 * 1024),
