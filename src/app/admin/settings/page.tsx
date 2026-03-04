@@ -27,9 +27,6 @@ export default async function AdminSettingsPage() {
         </Link>
         <h1 className="text-2xl font-semibold">Settings</h1>
         <p className="text-neutral-600">Configure site messaging and funding.</p>
-        <Link href="/admin/settings/pg-dump" className="block text-sm text-neutral-500 underline">
-          Import pg_dump
-        </Link>
       </header>
 
       <AdminSettings initial={settings} />
