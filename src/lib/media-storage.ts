@@ -5,6 +5,7 @@ import { execFile } from "child_process";
 import { Readable } from "stream";
 import { promisify } from "util";
 import sharp from "sharp";
+import mammoth from "mammoth";
 import {
   CopyObjectCommand,
   DeleteObjectCommand,
@@ -530,6 +531,20 @@ async function tryGenerateOfficePreview(buffer: Buffer, ext: string): Promise<Bu
   return null;
 }
 
+async function tryGenerateDocxTextPreview(buffer: Buffer): Promise<Buffer | null> {
+  try {
+    const result = await mammoth.extractRawText({ buffer });
+    const text = result.value?.trim();
+    if (!text) {
+      return null;
+    }
+    return asTextPreviewPng("DOCX preview", text);
+  } catch (error) {
+    console.warn(`[document-preview] DOCX text preview failed: ${formatProcessError(error)}`);
+    return null;
+  }
+}
+
 async function tryGenerateDocumentPreview(
   buffer: Buffer,
   ext: string,
@@ -557,6 +572,16 @@ async function tryGenerateDocumentPreview(
     ...SPREADSHEET_EXTENSIONS,
     ...PRESENTATION_EXTENSIONS,
   ]);
+  if (
+    normalizedExt === "docx" ||
+    normalizedMime.includes("wordprocessingml.document")
+  ) {
+    const docxPreview = await tryGenerateDocxTextPreview(buffer);
+    if (docxPreview) {
+      return docxPreview;
+    }
+  }
+
   if (
     officeConvertibleExtensions.has(normalizedExt) ||
     normalizedMime.includes("officedocument") ||
