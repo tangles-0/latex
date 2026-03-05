@@ -38,6 +38,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     supportEnabled?: boolean;
     signupsEnabled?: boolean;
     uploadsEnabled?: boolean;
+    shareHtmlNavigationEnabled?: boolean;
     resumableThresholdBytes?: number;
   };
 
@@ -74,6 +75,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     supportEnabled: payload.supportEnabled,
     signupsEnabled: payload.signupsEnabled,
     uploadsEnabled: payload.uploadsEnabled,
+    shareHtmlNavigationEnabled: payload.shareHtmlNavigationEnabled,
     resumableThresholdBytes: payload.resumableThresholdBytes,
   });
 

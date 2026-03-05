@@ -1,10 +1,11 @@
 import type { NextRequest } from "next/server";
-import { getAlbumShareByCode, getImage, getShareByCode } from "@/lib/metadata-store";
+import { getAlbumShareByCode, getAppSettings, getImage, getShareByCode } from "@/lib/metadata-store";
 import {
-  getMediaBuffer,
-  getMediaBufferRange,
   getMediaBufferSize,
-  pendingVideoPreviewPng,
+  getMediaSignedUrl,
+  getMediaRangeStream,
+  getMediaStream,
+  usesS3StorageBackend,
 } from "@/lib/media-storage";
 import { getSharedMediaByCode, getSharedMediaByCodeAndExt } from "@/lib/media-store";
 import { contentTypeForExt } from "@/lib/media-types";
@@ -56,6 +57,60 @@ function publicCacheHeaders(ext: string): Headers {
   });
 }
 
+function isDocumentNavigation(request: NextRequest): boolean {
+  const destination = request.headers.get("sec-fetch-dest");
+  const mode = request.headers.get("sec-fetch-mode");
+  const accept = request.headers.get("accept") ?? "";
+  return destination === "document" || mode === "navigate" || accept.includes("text/html");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function signedMediaViewerHtml(input: { src: string; mimeType: string; fileName: string }): string {
+  const safeSrc = escapeHtml(input.src);
+  const safeName = escapeHtml(input.fileName);
+  const type = input.mimeType.toLowerCase();
+  const body = type.startsWith("image/")
+    ? `<img src="${safeSrc}" alt="${safeName}" style="max-width:100%;max-height:100%;object-fit:contain" />`
+    : type.startsWith("video/")
+      ? `<video controls autoplay style="max-width:100%;max-height:100%" src="${safeSrc}"></video>`
+      : type.startsWith("audio/")
+        ? `<audio controls autoplay style="width:min(720px,100%)" src="${safeSrc}"></audio>`
+        : `<p><a href="${safeSrc}" rel="noopener noreferrer">Open file</a></p>`;
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeName}</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0b0b0c;
+        color: #e5e7eb;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        padding: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    ${body}
+  </body>
+</html>`;
+}
+
 function parseByteRange(rangeHeader: string, total: number): { start: number; end: number } | null {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
   if (!match) {
@@ -89,6 +144,9 @@ export async function GET(
 ): Promise<Response> {
   const { fileName } = await params;
   const parsed = parseFileName(fileName);
+  const allowHtmlNavigationMode = usesS3StorageBackend()
+    ? (await getAppSettings()).shareHtmlNavigationEnabled
+    : false;
   try {
     if (!parsed && /^[A-Za-z0-9]+$/.test(fileName)) {
       const albumShare = await getAlbumShareByCode(fileName);
@@ -126,14 +184,42 @@ export async function GET(
             : parsed.size === "x640"
               ? "lg"
               : parsed.size;
-        const data = await getMediaBuffer({
+        if (usesS3StorageBackend()) {
+          const responseExt = imageRequestedSize === "original" ? image.ext : "png";
+          const mimeType = contentTypeForExt(responseExt);
+          const signedUrl = await getMediaSignedUrl({
+            kind: "image",
+            baseName: image.baseName,
+            ext: image.ext,
+            size: imageRequestedSize,
+            uploadedAt: new Date(image.uploadedAt),
+            responseContentType: mimeType,
+          });
+          if (allowHtmlNavigationMode && isDocumentNavigation(request)) {
+            const html = signedMediaViewerHtml({
+              src: signedUrl,
+              mimeType,
+              fileName,
+            });
+            return withPublicImageCors(
+              new Response(html, {
+                headers: {
+                  "Content-Type": "text/html; charset=utf-8",
+                  "Cache-Control": "no-store",
+                },
+              }),
+            );
+          }
+          return withPublicImageCors(Response.redirect(signedUrl, 307));
+        }
+        const stream = await getMediaStream({
           kind: "image",
           baseName: image.baseName,
           ext: image.ext,
           size: imageRequestedSize,
           uploadedAt: new Date(image.uploadedAt),
         });
-        return withPublicImageCors(new Response(new Uint8Array(data), { headers: publicCacheHeaders(image.ext) }));
+        return withPublicImageCors(new Response(stream, { headers: publicCacheHeaders(image.ext) }));
       }
     }
 
@@ -145,10 +231,7 @@ export async function GET(
       return withPublicImageCors(await unavailableImageResponse(parsed.ext));
     }
     if (media.kind === "video" && media.previewStatus !== "ready" && parsed.size !== "original") {
-      const fallback = await pendingVideoPreviewPng(parsed.size === "sm" ? "sm" : "lg");
-      return withPublicImageCors(
-        new Response(new Uint8Array(fallback), { headers: publicCacheHeaders("png") }),
-      );
+      return withPublicImageCors(new Response("Not found", { status: 404 }));
     }
     const requestedSize =
       media.kind === "image" && media.ext.toLowerCase() === "svg" && parsed.size !== "original"
@@ -160,6 +243,35 @@ export async function GET(
       requestedSize === "original" &&
       (media.kind === "video" ||
         (media.kind === "other" && (media.mimeType ?? "").toLowerCase().startsWith("audio/")));
+    if (usesS3StorageBackend()) {
+      const responseExt =
+        requestedSize === "original" ? media.ext : media.kind === "image" ? media.ext : "png";
+      const mimeType = contentTypeForExt(responseExt);
+      const signedUrl = await getMediaSignedUrl({
+        kind: media.kind,
+        baseName: media.baseName,
+        ext: media.ext,
+        size: requestedSize,
+        uploadedAt: new Date(media.uploadedAt),
+        responseContentType: mimeType,
+      });
+      if (allowHtmlNavigationMode && isDocumentNavigation(request)) {
+        const html = signedMediaViewerHtml({
+          src: signedUrl,
+          mimeType,
+          fileName,
+        });
+        return withPublicImageCors(
+          new Response(html, {
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-store",
+            },
+          }),
+        );
+      }
+      return withPublicImageCors(Response.redirect(signedUrl, 307));
+    }
     if (isRangeStreamableOriginal) {
       const uploadedAt = new Date(media.uploadedAt);
       const total = await getMediaBufferSize({
@@ -183,7 +295,7 @@ export async function GET(
             }),
           );
         }
-        const data = await getMediaBufferRange({
+        const stream = await getMediaRangeStream({
           kind: media.kind,
           baseName: media.baseName,
           ext: media.ext,
@@ -196,11 +308,11 @@ export async function GET(
         headers.set("Content-Range", `bytes ${byteRange.start}-${byteRange.end}/${total}`);
         headers.set("Content-Length", String(byteRange.end - byteRange.start + 1));
         headers.set("Accept-Ranges", "bytes");
-        return withPublicImageCors(new Response(new Uint8Array(data), { status: 206, headers }));
+        return withPublicImageCors(new Response(stream, { status: 206, headers }));
       }
     }
 
-    const data = await getMediaBuffer({
+    const stream = await getMediaStream({
       kind: media.kind,
       baseName: media.baseName,
       ext: media.ext,
@@ -213,7 +325,7 @@ export async function GET(
     if (isRangeStreamableOriginal) {
       headers.set("Accept-Ranges", "bytes");
     }
-    return withPublicImageCors(new Response(new Uint8Array(data), { headers }));
+    return withPublicImageCors(new Response(stream, { headers }));
   } catch {
     if (!parsed) {
       return withPublicImageCors(new Response("Service temporarily unavailable.", { status: 503 }));

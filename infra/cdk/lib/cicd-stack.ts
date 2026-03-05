@@ -39,6 +39,7 @@ export class CiCdStack extends cdk.Stack {
             "ssm:*",
             "sts:GetCallerIdentity",
           ],
+          // TODO: Restrict to only the necessary resources
           resources: ["*"],
         }),
         new iam.PolicyStatement({
@@ -61,7 +62,7 @@ export class CiCdStack extends cdk.Stack {
     this.createRole("DevDeployRole", {
       provider,
       policy: basePolicy,
-      githubSub: `repo:${props.githubOrg}/${props.githubRepo}:ref:refs/heads/main`,
+      githubSub: `repo:${props.githubOrg}/${props.githubRepo}:ref:refs/heads/*`,
       roleName: `${props.config.appName}-github-deploy-dev`,
     });
 

@@ -99,6 +99,7 @@ export function ThemeProvider({
       isSaving,
       setTheme,
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [theme, isSaving],
   );
 
@@ -111,6 +112,7 @@ export function useTheme(): ThemeContextValue {
     return {
       theme: "dark",
       isSaving: false,
+      // eslint-disable-next-line @typescript-eslint/require-await
       setTheme: async () => undefined,
     };
   }

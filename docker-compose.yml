@@ -25,6 +25,8 @@ services:
       - RATE_LIMIT_MAX_ATTEMPTS=${RATE_LIMIT_MAX_ATTEMPTS:-20}
       - BILLING_ROLE_ARN=${BILLING_ROLE_ARN}
       - BILLING_CE_REGION=${BILLING_CE_REGION:-us-east-1}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - PASSWORD_RESET_TOKEN_TTL_MINUTES=${PASSWORD_RESET_TOKEN_TTL_MINUTES}
     restart: unless-stopped
     depends_on:
       db:

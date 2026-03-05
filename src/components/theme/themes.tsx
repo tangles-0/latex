@@ -6,19 +6,18 @@ import { LightGamepad } from '@energiz3r/icon-library/Icons/Light/LightGamepad';
 import { LightRadiation } from '@energiz3r/icon-library/Icons/Light/LightRadiation'; // neon-green theme
 import { LightMicrochip } from '@energiz3r/icon-library/Icons/Light/LightMicrochip'; // cyber theme
 import { LightRaindrops } from '@energiz3r/icon-library/Icons/Light/LightRaindrops'; // blood theme
-
-import { LightSeedling } from '@energiz3r/icon-library/Icons/Light/LightSeedling';  // forest (greens) theme
-import { LightCrow } from '@energiz3r/icon-library/Icons/Light/LightCrow'; // sky (light blues) theme
-import { LightRainbow } from '@energiz3r/icon-library/Icons/Light/LightRainbow'; // rainbow colors theme
-import { LightTransgenderAlt } from '@energiz3r/icon-library/Icons/Light/LightTransgenderAlt'; // trans flag colors theme
-import { LightHeart } from '@energiz3r/icon-library/Icons/Light/LightHeart'; // pinks theme
-import { LightJackOLantern } from '@energiz3r/icon-library/Icons/Light/LightJackOLantern'; // 'pumpkin' theme
 import { LightRobot } from '@energiz3r/icon-library/Icons/Light/LightRobot'; // cyan theme
-
 import { LightPager } from '@energiz3r/icon-library/Icons/Light/LightPager';
-import { LightGhost } from '@energiz3r/icon-library/Icons/Light/LightGhost';
-import { LightBiohazard } from '@energiz3r/icon-library/Icons/Light/LightBiohazard';
-import { LightSkull } from '@energiz3r/icon-library/Icons/Light/LightSkull';
+
+// import { LightSeedling } from '@energiz3r/icon-library/Icons/Light/LightSeedling';  // forest (greens) theme
+// import { LightCrow } from '@energiz3r/icon-library/Icons/Light/LightCrow'; // sky (light blues) theme
+// import { LightRainbow } from '@energiz3r/icon-library/Icons/Light/LightRainbow'; // rainbow colors theme
+// import { LightTransgenderAlt } from '@energiz3r/icon-library/Icons/Light/LightTransgenderAlt'; // trans flag colors theme
+// import { LightHeart } from '@energiz3r/icon-library/Icons/Light/LightHeart'; // pinks theme
+// import { LightJackOLantern } from '@energiz3r/icon-library/Icons/Light/LightJackOLantern'; // 'pumpkin' theme
+// import { LightGhost } from '@energiz3r/icon-library/Icons/Light/LightGhost';
+// import { LightBiohazard } from '@energiz3r/icon-library/Icons/Light/LightBiohazard';
+// import { LightSkull } from '@energiz3r/icon-library/Icons/Light/LightSkull';
 
 export const THEMES = ["dark", "light", "author", "depth", "neon-green", "retro", "cyber", "blood", "robot", "crt"] as const;
 export const THEME_SET = new Set<string>(THEMES);

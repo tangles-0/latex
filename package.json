@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next build && next dev --turbopack -p 3000",
-    "dev-quick": "next dev --turbopack -p 3000",
+    "devbuild": "next build && next dev --turbopack -p 3000",
+    "dev": "next dev --turbopack -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "lint:es": "pnpm exec eslint",
     "db:push": "drizzle-kit push --config ./drizzle.config.ts",
     "db:push:force": "drizzle-kit push --force --config ./drizzle.config.ts",
     "cdk:install": "pnpm --dir infra/cdk install",
@@ -15,8 +16,8 @@
     "cdk:bootstrap:prod": "./scripts/infra/bootstrap-cdk.sh prod",
     "infra:image:push:dev": "./scripts/infra/build-and-push-image.sh dev",
     "infra:image:push:prod": "./scripts/infra/build-and-push-image.sh prod",
-    "infra:deploy:dev:app": "bash ./scripts/infra/deploy-app.sh dev",
-    "infra:deploy:prod:app": "bash ./scripts/infra/deploy-app.sh prod"
+    "infra:deploy:dev": "bash ./scripts/infra/deploy-app.sh dev",
+    "infra:deploy:prod": "bash ./scripts/infra/deploy-app.sh prod"
   },
   "dependencies": {
     "@aws-sdk/client-cost-explorer": "^3.996.0",
@@ -25,6 +26,7 @@
     "@aws-sdk/client-secrets-manager": "^3.954.0",
     "@aws-sdk/client-ssm": "^3.968.0",
     "@aws-sdk/credential-providers": "^3.969.0",
+    "@aws-sdk/s3-request-presigner": "^3.986.0",
     "@energiz3r/icon-library": "^0.0.6",
     "@hookform/resolvers": "^5.2.2",
     "@monaco-editor/react": "^4.7.0",
@@ -53,6 +55,7 @@
     "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.45.1",
     "lucide-react": "^0.544.0",
+    "mammoth": "^1.11.0",
     "next": "^15.5.10",
     "next-auth": "^4.24.11",
     "postgres": "^3.4.7",
@@ -62,6 +65,7 @@
     "react-hook-form": "^7.64.0",
     "react-markdown": "^10.1.0",
     "remark": "^15.0.1",
+    "resend": "^6.9.3",
     "sharp": "^0.33.5",
     "strip-markdown": "^6.0.0",
     "stripe": "^19.3.1",
@@ -77,10 +81,11 @@
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "eslint": "^9.37.0",
-    "eslint-config-next": "15.5.4",
+    "eslint-config-next": "^16.1.6",
     "prettier": "^3.8.0",
     "tailwindcss": "^4.1.14",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1"
   },
   "packageManager": "pnpm@10.16.1+sha512.0e155aa2629db8672b49e8475da6226aa4bdea85fdcdfdc15350874946d4f3c91faaf64cbdc4a5d1ab8002f473d5c3fcedcd197989cf0390f9badd3c04678706"
 }

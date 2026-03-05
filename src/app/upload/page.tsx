@@ -5,7 +5,6 @@ import { getAppSettings } from "@/lib/metadata-store";
 import UploadDropzone from "@/components/upload-dropzone";
 import AlertBanner from "@/components/ui/alert-banner";
 import PageHeader from "@/components/ui/page-header";
-import TextLink from "@/components/ui/text-link";
 
 export default async function UploadPage() {
   const session = await getServerSession(authOptions);

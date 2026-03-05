@@ -45,6 +45,7 @@ export default function AlbumShareView({
           return (
             <div key={item.id} className="rounded-md border border-neutral-200 p-4">
               {item.kind === "image" ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
                 <img
                   src={previewUrl}
                   alt="Shared album file"

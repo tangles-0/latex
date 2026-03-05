@@ -78,6 +78,7 @@ export default function GalleryClient({
   hideImagesInAlbums = false,
   kindFilter = "all",
   resumableThresholdBytes = DEFAULT_RESUMABLE_THRESHOLD,
+  isAdmin = false,
 }: {
   media: GalleryImage[];
   onImagesChange?: (next: GalleryImage[]) => void;
@@ -86,6 +87,7 @@ export default function GalleryClient({
   hideImagesInAlbums?: boolean;
   kindFilter?: "all" | "image" | "video" | "document" | "other";
   resumableThresholdBytes?: number;
+  isAdmin?: boolean;
 }) {
   const [items, setItems] = useState<GalleryImage[]>(media);
   const [active, setActive] = useState<GalleryImage | null>(null);
@@ -237,6 +239,7 @@ export default function GalleryClient({
       window.removeEventListener("dragleave", handleDragLeave);
       window.removeEventListener("drop", handleDrop);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filteredItems = useMemo(
@@ -1128,6 +1131,7 @@ export default function GalleryClient({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, activeIndex, displayItems, hasNext, hasPrevious]);
 
   return (
@@ -1300,6 +1304,7 @@ export default function GalleryClient({
                   </div>
                 ) : (
                   <div className="relative mt-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image.thumbUrl}
                       alt="Uploaded"
@@ -1575,6 +1580,7 @@ export default function GalleryClient({
                   />
                 ) : (
                   <FileViewerContent
+                    isAdmin={isAdmin}
                     kind={active.kind}
                     previewStatus={active.previewStatus}
                     fullUrl={activeDisplayItem?.fullUrl ?? `/media/${active.kind}/${active.id}/${active.baseName}.${active.ext}`}

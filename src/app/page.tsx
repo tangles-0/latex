@@ -37,6 +37,7 @@ export default async function Home() {
         <div className="relative">
           <h1 className="text-2xl font-semibold mt-1">latex <span className="font-medium text-neutral-500">img_srv</span></h1>
           <div className="absolute top-[-15px] left-[-22px]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/latex-logo.png" alt="latex" width="32px" className="latex-logo z-5" />
           </div>
         </div>
@@ -90,7 +91,7 @@ export default async function Home() {
           {/* <h2 className="text-lg font-medium">I C U AGAIN</h2> 
           <p className="text-lg text-neutral-600">*/}
           <h2 className="text-lg font-medium">
-            u r <span className="font-bold">{session?.user?.email ?? session?.user?.name ?? "user"}</span>. wb &lt;3
+            u r <span className="font-bold">{session?.user?.name ?? session?.user?.email ?? "...who r u?"}</span>. wb &lt;3
           </h2>
           <p className="text-xs text-neutral-600">
             u hav {userStats?.imageCount ?? 0} imgs uploaded using{" "}

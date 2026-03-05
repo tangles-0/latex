@@ -34,8 +34,12 @@ ENV NODE_ENV=production
 # Uncomment the following line in case you want to disable telemetry during runtime.
 # ENV NEXT_TELEMETRY_DISABLED=1
 
-# Needed for admin migration import route (`psql` / `pg_restore`).
-RUN apk add --no-cache postgresql-client
+# Needed for admin migration import route (`psql` / `pg_restore`),
+# document preview generation (`pdftoppm` + `soffice`),
+# document/text preview rendering (`fontconfig` + actual fonts),
+# and video preview frame extraction (`ffmpeg`).
+RUN apk add --no-cache postgresql-client poppler-utils libreoffice fontconfig ttf-dejavu ffmpeg \
+  && fc-cache -f
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs

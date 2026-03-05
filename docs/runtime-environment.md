@@ -6,6 +6,8 @@ The app supports both local and AWS runtime settings.
 
 - `NEXTAUTH_URL`
 - `NEXTAUTH_SECRET`
+- `PASSWORD_RESET_TOKEN_TTL_MINUTES` (optional, defaults to `30`)
+- `RESEND_API_KEY` (required for password reset email delivery)
 - `ADMIN_BOOTSTRAP_TOKEN` (required only for one-time `/promote-admin` bootstrap)
 - `STORAGE_BACKEND` (`local` or `s3`)
 - `RUN_DB_MIGRATIONS_ON_STARTUP` (`true` only for local/dev smoke use)

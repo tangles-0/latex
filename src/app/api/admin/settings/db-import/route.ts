@@ -8,7 +8,7 @@ import { isAdminUser } from "@/lib/metadata-store";
 
 export const runtime = "nodejs";
 
-const IS_ENABLED = false;
+const IS_ENABLED = true;
 
 const MAX_DUMP_BYTES = 1024 * 1024 * 1024;
 const s3Region = process.env.S3_REGION;

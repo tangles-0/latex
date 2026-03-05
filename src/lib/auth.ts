@@ -118,6 +118,7 @@ export const authOptions: NextAuthOptions = {
       }
       return token;
     },
+    // eslint-disable-next-line @typescript-eslint/require-await
     async session({ session, token }) {
       if (session.user) {
         (session.user as { id?: string }).id = token.sub;

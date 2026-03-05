@@ -29,6 +29,7 @@ export const appSettings = pgTable("app_settings", {
   supportEnabled: boolean("support_enabled").notNull().default(true),
   signupsEnabled: boolean("signups_enabled").notNull().default(true),
   uploadsEnabled: boolean("uploads_enabled").notNull().default(true),
+  shareHtmlNavigationEnabled: boolean("share_html_navigation_enabled").notNull().default(true),
   resumableThresholdBytes: bigint("resumable_threshold_bytes", { mode: "number" })
     .notNull()
     .default(64 * 1024 * 1024),
@@ -40,6 +41,8 @@ export const users = pgTable("users", {
   username: text("username").notNull(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  passwordResetTokenHash: text("password_reset_token_hash"),
+  passwordResetTokenExpiresAt: timestamp("password_reset_token_expires_at", { mode: "date" }),
   groupId: text("group_id").references(() => groups.id),
   theme: text("theme").notNull().default("dark"),
   createdAt: timestamp("created_at", { mode: "date" }).notNull(),

@@ -34,11 +34,13 @@ export default function GalleryTabs({
   media,
   initialTab = "files",
   resumableThresholdBytes,
+  isAdmin,
 }: {
   albums: AlbumInfo[];
   media: GalleryImage[];
   initialTab?: "albums" | "files";
   resumableThresholdBytes?: number;
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -55,29 +57,17 @@ export default function GalleryTabs({
   const [renameAlbumName, setRenameAlbumName] = useState("");
   const [renameError, setRenameError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [hideAlbumImages, setHideAlbumImages] = useState(false);
+  let storedSetting = "";
+  try {
+    storedSetting = window.localStorage.getItem(HIDE_ALBUM_IMAGES_STORAGE_KEY) ?? "0";
+  } catch {} // ignore storage errors
+  const [hideAlbumImages, setHideAlbumImages] = useState(storedSetting === "1");
   const [delBtnLabel, setDelBtnLabel] = useState("del album");
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(HIDE_ALBUM_IMAGES_STORAGE_KEY);
-      if (stored === "1") {
-        setHideAlbumImages(true);
-      }
-      if (stored === "0") {
-        setHideAlbumImages(false);
-      }
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
       window.localStorage.setItem(HIDE_ALBUM_IMAGES_STORAGE_KEY, hideAlbumImages ? "1" : "0");
-    } catch {
-      // ignore storage errors
-    }
+    } catch {} // ignore storage errors
   }, [hideAlbumImages]);
 
   const albumPreviews = albumItems.map((album) => {
@@ -250,6 +240,7 @@ export default function GalleryTabs({
                     <div className="grid grid-cols-3 gap-2">
                       {album.previews.length > 0 ? (
                         album.previews.map((image) => (
+                          /* eslint-disable-next-line @next/next/no-img-element */
                           <img
                             key={image.id}
                             src={`/media/${image.kind}/${image.id}/${image.baseName}-sm.${image.ext}`}
@@ -413,6 +404,7 @@ export default function GalleryTabs({
           hideImagesInAlbums={hideAlbumImages}
           kindFilter={fileTypeFilter}
           resumableThresholdBytes={resumableThresholdBytes}
+          isAdmin={isAdmin}
         />
       )}
     </div>

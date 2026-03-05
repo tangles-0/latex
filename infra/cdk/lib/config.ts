@@ -17,11 +17,13 @@ export type EnvironmentConfig = {
   s3UseKmsEncryption: boolean;
   s3Versioned: boolean;
   s3NoncurrentVersionExpirationDays: number;
+  passwordResetTokenTtlMinutes: number;
 };
 
 const BASE = {
   appName: "latex",
   region: "ap-southeast-2",
+  passwordResetTokenTtlMinutes: 30,
 } as const;
 
 const CONFIG_BY_ENV: Record<EnvironmentName, Omit<EnvironmentConfig, "environment">> = {

@@ -679,6 +679,7 @@ export default function UploadDropzone({
                         })()}
                       </div>
                     ) : (
+                      /* eslint-disable-next-line @next/next/no-img-element */
                       <img
                         src={thumbUrl}
                         alt="Uploaded thumbnail"
