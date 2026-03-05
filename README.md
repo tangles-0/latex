@@ -62,23 +62,19 @@ To run the app directly without docker, correctly set your
 
 - CDK app: `infra/cdk`
 - New one-command flows (idempotent):
-  - `pnpm infra:deploy:dev:app`
-  - `pnpm infra:deploy:prod:app`
+  - `pnpm infra:deploy:dev`
+  - `pnpm infra:deploy:prod`
   - `pnpm infra:deploy:dev:db-migrate`
   - `pnpm infra:deploy:prod:db-migrate`
 - Dev deploy:
   - `pnpm cdk:install`
   - `aws sts get-caller-identity` (or set `AWS_PROFILE=latex-admin`)
   - `pnpm cdk:bootstrap:dev`
-  - `pnpm infra:cdk:deploy:all:dev` (first-time/full infra)
   - `pnpm infra:image:push:dev` (build and push app image tag)
-  - `pnpm infra:cdk:deploy:dev` (app/runtime update only)
   - `pnpm infra:db:push:dev` (run schema push in one-off ECS task)
 - Prod deploy:
   - `pnpm cdk:bootstrap:prod`
-  - `pnpm infra:cdk:deploy:all:prod` (first-time/full infra)
   - `pnpm infra:image:push:prod` (build and push app image tag)
-  - `pnpm infra:cdk:deploy:prod` (app/runtime update only)
   - `pnpm infra:db:push:prod`
 
 ## Ops Docs

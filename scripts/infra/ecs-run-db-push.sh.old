@@ -29,7 +29,7 @@ SERVICE_STATUS=$(aws ecs describe-services \
 
 if [[ -z "$SERVICE_STATUS" || "$SERVICE_STATUS" == "None" ]]; then
   echo "ECS service ${SERVICE} was not found in cluster ${CLUSTER}." >&2
-  echo "Deploy app stack first, e.g. pnpm infra:deploy:${ENVIRONMENT}:app" >&2
+  echo "Deploy app stack first, e.g. pnpm infra:deploy:${ENVIRONMENT}" >&2
   exit 1
 fi
 
