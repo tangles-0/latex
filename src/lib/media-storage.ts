@@ -1,6 +1,6 @@
 import path from "path";
 import os from "os";
-import { createReadStream, promises as fs } from "fs";
+import { constants as fsConstants, createReadStream, promises as fs } from "fs";
 import { execFile } from "child_process";
 import { Readable } from "stream";
 import { promisify } from "util";
@@ -73,6 +73,9 @@ function formatProcessError(error: unknown): string {
   if (typeof maybeError.stderr === "string" && maybeError.stderr.trim().length > 0) {
     parts.push(`stderr=${maybeError.stderr.trim()}`);
   }
+  if (typeof maybeError.stdout === "string" && maybeError.stdout.trim().length > 0) {
+    parts.push(`stdout=${maybeError.stdout.trim()}`);
+  }
   if (parts.length > 0) {
     return parts.join(" | ");
   }
@@ -82,16 +85,32 @@ function formatProcessError(error: unknown): string {
   return "Unknown process error.";
 }
 
+async function writableStatusForDir(dirPath: string): Promise<string> {
+  try {
+    await fs.mkdir(dirPath, { recursive: true });
+    await fs.access(dirPath, fsConstants.W_OK);
+    const probePath = path.join(
+      dirPath,
+      `.writable-probe-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    );
+    await fs.writeFile(probePath, "ok");
+    await fs.rm(probePath, { force: true });
+    return "yes";
+  } catch (error) {
+    return `no (${formatProcessError(error)})`;
+  }
+}
+
 const MEDIA_DIRECT_URL_TTL_SECONDS = Number.parseInt(
   process.env.MEDIA_DIRECT_URL_TTL_SECONDS ?? "120",
   10,
 );
 const TMP_CANDIDATES = [
+  path.join(DATA_DIR, "tmp"),
   process.env.TANGLEPIC_TMP_DIR,
-  "/dev/shm",
   "/var/tmp",
   os.tmpdir(),
-  path.join(process.cwd(), "data", "tmp"),
+  "/dev/shm",
 ].filter((value): value is string => Boolean(value && value.trim().length > 0));
 
 function toWebReadableStream(body: unknown): ReadableStream<Uint8Array> {
@@ -166,9 +185,9 @@ function buildStorageKey(
   return path.posix.join("uploads", year, month, day, kind, size, `${baseName}.${ext}`);
 }
 
-async function createWorkingDir(prefix: string): Promise<string> {
+async function createWorkingDir(prefix: string, candidates: string[] = TMP_CANDIDATES): Promise<string> {
   let lastError: Error | null = null;
-  for (const candidate of TMP_CANDIDATES) {
+  for (const candidate of candidates) {
     try {
       await fs.mkdir(candidate, { recursive: true });
       return await fs.mkdtemp(path.join(candidate, prefix));
@@ -444,53 +463,71 @@ async function tryGeneratePdfPreview(buffer: Buffer): Promise<Buffer | null> {
 }
 
 async function tryGenerateOfficePreview(buffer: Buffer, ext: string): Promise<Buffer | null> {
-  const tmpDir = await createWorkingDir("tanglepic-office-");
-  const inputPath = path.join(tmpDir, `input.${ext}`);
-  const pdfPath = path.join(tmpDir, "input.pdf");
-  const outputPrefix = path.join(tmpDir, "preview");
-  const outputPath = `${outputPrefix}.png`;
-  const officeProfilePath = path.join(tmpDir, "lo-profile");
-  const officeProfileUri = `file://${officeProfilePath}`;
-  try {
-    await fs.mkdir(officeProfilePath, { recursive: true });
-    await fs.writeFile(inputPath, buffer);
-    await execFileAsync(
-      "soffice",
-      [
-        "--headless",
-        "--invisible",
-        "--nologo",
-        "--nodefault",
-        "--nolockcheck",
-        "--norestore",
-        `-env:UserInstallation=${officeProfileUri}`,
-        "--convert-to",
-        "pdf:writer_pdf_Export",
-        "--outdir",
-        tmpDir,
-        inputPath,
-      ],
-      {
-        timeout: 20_000,
-        env: {
-          ...process.env,
-          HOME: tmpDir,
-          TMPDIR: tmpDir,
+  const officeTmpCandidates = Array.from(new Set([path.join(DATA_DIR, "tmp"), ...TMP_CANDIDATES]));
+  const errorsByCandidate: string[] = [];
+  for (const candidate of officeTmpCandidates) {
+    let tmpDir = "";
+    try {
+      const candidateWritable = await writableStatusForDir(candidate);
+      console.info(
+        `[document-preview] Office preview candidate check for .${ext}: path=${candidate} writable=${candidateWritable}`,
+      );
+      tmpDir = await createWorkingDir("tanglepic-office-", [candidate]);
+      const inputPath = path.join(tmpDir, `input.${ext}`);
+      const pdfPath = path.join(tmpDir, "input.pdf");
+      const outputPrefix = path.join(tmpDir, "preview");
+      const outputPath = `${outputPrefix}.png`;
+      const officeProfilePath = path.join(tmpDir, "lo-profile");
+      const officeProfileUri = `file://${officeProfilePath}`;
+
+      await fs.mkdir(officeProfilePath, { recursive: true });
+      const tmpDirWritable = await writableStatusForDir(tmpDir);
+      const profileDirWritable = await writableStatusForDir(officeProfilePath);
+      console.info(
+        `[document-preview] Office preview working dirs for .${ext}: tmpDir=${tmpDir} writable=${tmpDirWritable}; profileDir=${officeProfilePath} writable=${profileDirWritable}`,
+      );
+      await fs.writeFile(inputPath, buffer);
+      await execFileAsync(
+        "soffice",
+        [
+          "--headless",
+          "--invisible",
+          "--nologo",
+          "--nodefault",
+          "--nolockcheck",
+          "--norestore",
+          `-env:UserInstallation=${officeProfileUri}`,
+          "--convert-to",
+          "pdf:writer_pdf_Export",
+          "--outdir",
+          tmpDir,
+          inputPath,
+        ],
+        {
+          timeout: 20_000,
+          env: {
+            ...process.env,
+            HOME: tmpDir,
+            TMPDIR: tmpDir,
+          },
         },
-      },
-    );
-    await execFileAsync("pdftoppm", ["-f", "1", "-singlefile", "-png", pdfPath, outputPrefix], {
-      timeout: 20_000,
-    });
-    return await fs.readFile(outputPath);
-  } catch (error) {
-    console.warn(
-      `[document-preview] Office preview generation failed for .${ext}: ${formatProcessError(error)}`,
-    );
-    return null;
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true });
+      );
+      await execFileAsync("pdftoppm", ["-f", "1", "-singlefile", "-png", pdfPath, outputPrefix], {
+        timeout: 20_000,
+      });
+      return await fs.readFile(outputPath);
+    } catch (error) {
+      errorsByCandidate.push(`${candidate}: ${formatProcessError(error)}`);
+    } finally {
+      if (tmpDir) {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
+    }
   }
+  console.warn(
+    `[document-preview] Office preview generation failed for .${ext}: ${errorsByCandidate.join(" || ")}`,
+  );
+  return null;
 }
 
 async function tryGenerateDocumentPreview(
