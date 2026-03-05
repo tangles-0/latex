@@ -98,7 +98,7 @@ export class AppStack extends cdk.Stack {
         RATE_LIMIT_MAX_ATTEMPTS: "20",
         BILLING_ROLE_ARN: billingReaderRole.roleArn,
         BILLING_CE_REGION: "us-east-1",
-        PASSWORD_RESET_TOKEN_TTL_MINUTES: "30",
+        PASSWORD_RESET_TOKEN_TTL_MINUTES: props.config.passwordResetTokenTtlMinutes.toString(),
       },
       secrets: {
         NEXTAUTH_SECRET: ecs.Secret.fromSecretsManager(props.appSecret, "NEXTAUTH_SECRET"),

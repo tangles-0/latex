@@ -7,7 +7,6 @@ import {
   getMediaSignedUrl,
   getMediaRangeStream,
   getMediaStream,
-  pendingVideoPreviewPng,
   usesS3StorageBackend,
 } from "@/lib/media-storage";
 import { unavailableImageResponse } from "@/lib/unavailable-image";
@@ -104,8 +103,7 @@ export async function GET(
     }
 
     if (media.kind === "video" && media.previewStatus !== "ready" && parsed.size !== "original") {
-      const fallback = await pendingVideoPreviewPng(parsed.size);
-      return withPublicCors(new Response(new Uint8Array(fallback), { headers: publicCacheHeaders("png") }));
+      return withPublicCors(new Response("Not found", { status: 404 }));
     }
 
     const requestedSize =

@@ -78,6 +78,7 @@ export default function GalleryClient({
   hideImagesInAlbums = false,
   kindFilter = "all",
   resumableThresholdBytes = DEFAULT_RESUMABLE_THRESHOLD,
+  isAdmin = false,
 }: {
   media: GalleryImage[];
   onImagesChange?: (next: GalleryImage[]) => void;
@@ -86,6 +87,7 @@ export default function GalleryClient({
   hideImagesInAlbums?: boolean;
   kindFilter?: "all" | "image" | "video" | "document" | "other";
   resumableThresholdBytes?: number;
+  isAdmin?: boolean;
 }) {
   const [items, setItems] = useState<GalleryImage[]>(media);
   const [active, setActive] = useState<GalleryImage | null>(null);
@@ -1578,6 +1580,7 @@ export default function GalleryClient({
                   />
                 ) : (
                   <FileViewerContent
+                    isAdmin={isAdmin}
                     kind={active.kind}
                     previewStatus={active.previewStatus}
                     fullUrl={activeDisplayItem?.fullUrl ?? `/media/${active.kind}/${active.id}/${active.baseName}.${active.ext}`}

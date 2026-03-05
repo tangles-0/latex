@@ -8,7 +8,6 @@ import {
   getMediaSignedUrl,
   getMediaRangeStream,
   getMediaStream,
-  pendingVideoPreviewPng,
   usesS3StorageBackend,
 } from "@/lib/media-storage";
 
@@ -89,16 +88,7 @@ export async function GET(
         ? "original"
         : parsed.size;
     if (parsedKind === "video" && parsed.size !== "original" && media.previewStatus !== "ready") {
-      const fallback = await pendingVideoPreviewPng(parsed.size);
-      return new Response(new Uint8Array(fallback), {
-        headers: {
-          "Content-Type": "image/png",
-          "Cache-Control": "private, no-store, max-age=0, must-revalidate",
-          Pragma: "no-cache",
-          Expires: "0",
-          Vary: "Cookie, Authorization",
-        },
-      });
+      return new Response("Not found", { status: 404 });
     }
     const isRangeStreamableOriginal =
       requestedSize === "original" &&

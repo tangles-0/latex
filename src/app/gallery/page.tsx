@@ -33,6 +33,8 @@ export default async function GalleryPage({
     getUserLastPatchNoteDismissed(userId),
     getAppSettings(),
   ]);
+
+  console.log("isAdmin", isAdmin);  
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const initialTab = resolvedSearchParams?.tab === "albums" ? "albums" : "files";
   const pageTitle = initialTab === "albums" ? "ur albums" : "ur gallery";
@@ -75,6 +77,7 @@ export default async function GalleryPage({
         albums={albums.map((album) => ({ id: album.id, name: album.name }))}
         media={media}
         resumableThresholdBytes={settings.resumableThresholdBytes}
+        isAdmin={isAdmin}
       />
     </main>
   );

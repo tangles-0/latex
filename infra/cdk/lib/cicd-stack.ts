@@ -39,6 +39,7 @@ export class CiCdStack extends cdk.Stack {
             "ssm:*",
             "sts:GetCallerIdentity",
           ],
+          // TODO: Restrict to only the necessary resources
           resources: ["*"],
         }),
         new iam.PolicyStatement({

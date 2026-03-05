@@ -5,7 +5,6 @@ import {
   getMediaSignedUrl,
   getMediaRangeStream,
   getMediaStream,
-  pendingVideoPreviewPng,
   usesS3StorageBackend,
 } from "@/lib/media-storage";
 import { getSharedMediaByCode, getSharedMediaByCodeAndExt } from "@/lib/media-store";
@@ -232,10 +231,7 @@ export async function GET(
       return withPublicImageCors(await unavailableImageResponse(parsed.ext));
     }
     if (media.kind === "video" && media.previewStatus !== "ready" && parsed.size !== "original") {
-      const fallback = await pendingVideoPreviewPng(parsed.size === "sm" ? "sm" : "lg");
-      return withPublicImageCors(
-        new Response(new Uint8Array(fallback), { headers: publicCacheHeaders("png") }),
-      );
+      return withPublicImageCors(new Response("Not found", { status: 404 }));
     }
     const requestedSize =
       media.kind === "image" && media.ext.toLowerCase() === "svg" && parsed.size !== "original"

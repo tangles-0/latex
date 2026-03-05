@@ -1,7 +1,7 @@
 import path from "path";
 import os from "os";
 import { createReadStream, promises as fs } from "fs";
-import { execFile, spawn } from "child_process";
+import { execFile } from "child_process";
 import { Readable } from "stream";
 import { promisify } from "util";
 import sharp from "sharp";
@@ -51,6 +51,13 @@ const s3Client =
       })
     : null;
 const execFileAsync = promisify(execFile);
+function formatProcessError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Unknown process error.";
+}
+
 const MEDIA_DIRECT_URL_TTL_SECONDS = Number.parseInt(
   process.env.MEDIA_DIRECT_URL_TTL_SECONDS ?? "120",
   10,
@@ -95,40 +102,6 @@ function toWebReadableStream(body: unknown): ReadableStream<Uint8Array> {
     });
   }
   throw new Error("Unsupported storage response stream type.");
-}
-
-function isAsyncIterableUint8Array(value: unknown): value is AsyncIterable<Uint8Array> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function"
-  );
-}
-
-function webReaderToAsyncIterable(reader: {
-  read: () => Promise<{ done: boolean; value?: Uint8Array }>;
-  releaseLock?: () => void;
-}): AsyncIterable<Uint8Array> {
-  return {
-    [Symbol.asyncIterator]() {
-      return {
-        async next() {
-          const result = await reader.read();
-          if (result.done) {
-            return { done: true, value: undefined as Uint8Array | undefined };
-          }
-          return { done: false, value: result.value ?? new Uint8Array() };
-        },
-        // eslint-disable-next-line @typescript-eslint/require-await
-        async return() {
-          if (typeof reader.releaseLock === "function") {
-            reader.releaseLock();
-          }
-          return { done: true, value: undefined as Uint8Array | undefined };
-        },
-      };
-    },
-  };
 }
 
 async function readWebStreamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -438,7 +411,8 @@ async function tryGeneratePdfPreview(buffer: Buffer): Promise<Buffer | null> {
       timeout: 20_000,
     });
     return await fs.readFile(outputPath);
-  } catch {
+  } catch (error) {
+    console.warn(`[document-preview] PDF preview generation failed: ${formatProcessError(error)}`);
     return null;
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
@@ -460,7 +434,10 @@ async function tryGenerateOfficePreview(buffer: Buffer, ext: string): Promise<Bu
       timeout: 20_000,
     });
     return await fs.readFile(outputPath);
-  } catch {
+  } catch (error) {
+    console.warn(
+      `[document-preview] Office preview generation failed for .${ext}: ${formatProcessError(error)}`,
+    );
     return null;
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true });
@@ -509,112 +486,43 @@ async function tryGenerateDocumentPreview(
   return null;
 }
 
-async function tryGenerateVideoPreviewFromStream(input: NodeJS.ReadableStream): Promise<Buffer | null> {
-  return new Promise((resolve) => {
-    const ffmpeg = spawn(
+async function tryGenerateVideoPreviewFromSource(source: string): Promise<Buffer | null> {
+  const tmpDir = await createWorkingDir("tanglepic-video-preview-");
+  const outputPath = path.join(tmpDir, "preview.png");
+  try {
+    await execFileAsync(
       "ffmpeg",
       [
         "-hide_banner",
         "-loglevel",
         "error",
-        "-i",
-        "pipe:0",
+        "-nostdin",
+        "-threads",
+        "1",
         "-ss",
         "00:00:01",
+        "-i",
+        source,
         "-frames:v",
         "1",
         "-vf",
-        "scale='min(1024,iw)':-2",
-        "-f",
-        "image2pipe",
-        "-vcodec",
-        "png",
-        "pipe:1",
+        "scale='min(1024,iw)':-2:flags=lanczos",
+        "-an",
+        "-sn",
+        "-dn",
+        "-y",
+        outputPath,
       ],
-      { stdio: ["pipe", "pipe", "pipe"] },
+      { timeout: 30_000 },
     );
-    const chunks: Buffer[] = [];
-    let stderr = "";
-    const timeout = setTimeout(() => {
-      ffmpeg.kill("SIGKILL");
-    }, 30_000);
-
-    ffmpeg.stdout.on("data", (chunk: Buffer) => {
-      chunks.push(Buffer.from(chunk));
-    });
-    ffmpeg.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    ffmpeg.once("error", () => {
-      clearTimeout(timeout);
-      resolve(null);
-    });
-    ffmpeg.once("close", (code) => {
-      clearTimeout(timeout);
-      if (code === 0 && chunks.length > 0) {
-        resolve(Buffer.concat(chunks));
-        return;
-      }
-      if (stderr.length > 0) {
-        console.warn(`ffmpeg thumbnail generation failed: ${stderr}`);
-      }
-      resolve(null);
-    });
-    input.once("error", () => {
-      ffmpeg.kill("SIGKILL");
-      clearTimeout(timeout);
-      resolve(null);
-    });
-    ffmpeg.stdin.on("error", () => {
-      // ignore broken pipe; close handler resolves outcome.
-    });
-    input.pipe(ffmpeg.stdin);
-  });
-}
-
-async function openKeyNodeStream(key: string): Promise<NodeJS.ReadableStream> {
-  if (STORAGE_BACKEND === "s3") {
-    if (!s3Client || !S3_BUCKET) {
-      throw new Error("S3 is not configured.");
-    }
-    const response = await s3Client.send(
-      new GetObjectCommand({
-        Bucket: S3_BUCKET,
-        Key: key,
-      }),
-    );
-    const body = response.Body;
-    if (!body) {
-      throw new Error("Storage response body is empty.");
-    }
-    if (body instanceof Readable) {
-      return body;
-    }
-    if (typeof (body as { getReader?: unknown }).getReader === "function") {
-      const reader = (
-        body as {
-          getReader: () => {
-            read: () => Promise<{ done: boolean; value?: Uint8Array }>;
-            releaseLock?: () => void;
-          };
-        }
-      ).getReader();
-      return Readable.from(webReaderToAsyncIterable(reader));
-    }
-    if (isAsyncIterableUint8Array(body)) {
-      return Readable.from(body);
-    }
-    throw new Error("Unsupported storage response stream type.");
+    return await fs.readFile(outputPath);
+  } catch (error) {
+    const details = error instanceof Error ? error.message : "Unknown ffmpeg error";
+    console.warn(`ffmpeg thumbnail generation failed: ${details}`);
+    return null;
+  } finally {
+    await fs.rm(tmpDir, { recursive: true, force: true });
   }
-  return createReadStream(absolutePathForKey(key));
-}
-
-export async function pendingVideoPreviewPng(size: Exclude<MediaSize, "original">): Promise<Buffer> {
-  const lg = await asPreviewPng("Preview Pending");
-  if (size === "lg") {
-    return lg;
-  }
-  return sharp(lg).resize({ width: 320, withoutEnlargement: true }).png().toBuffer();
 }
 
 export async function storeGenericMediaFromBuffer(input: {
@@ -941,10 +849,22 @@ export async function generateVideoPreviewFromStoredMedia(input: {
   uploadedAt: Date;
 }): Promise<{ sizeSm: number; sizeLg: number; width?: number; height?: number }> {
   const originalKey = buildStorageKey("video", input.baseName, input.ext, "original", input.uploadedAt);
-  const originalStream = await openKeyNodeStream(originalKey);
-  const videoFrame = await tryGenerateVideoPreviewFromStream(originalStream);
-  const lgBufferSource = videoFrame ?? (await asPreviewPng("Video Preview"));
-  const lgBuffer = await sharp(lgBufferSource)
+  const source =
+    STORAGE_BACKEND === "s3"
+      ? await getMediaSignedUrl({
+          kind: "video",
+          baseName: input.baseName,
+          ext: input.ext,
+          size: "original",
+          uploadedAt: input.uploadedAt,
+          responseContentType: contentTypeForExt(input.ext),
+        })
+      : absolutePathForKey(originalKey);
+  const videoFrame = await tryGenerateVideoPreviewFromSource(source);
+  if (!videoFrame) {
+    throw new Error("Unable to extract a preview frame from this video.");
+  }
+  const lgBuffer = await sharp(videoFrame)
     .resize({ width: 1024, withoutEnlargement: true })
     .png()
     .toBuffer();
