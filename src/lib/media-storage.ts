@@ -52,6 +52,30 @@ const s3Client =
     : null;
 const execFileAsync = promisify(execFile);
 function formatProcessError(error: unknown): string {
+  if (!error || typeof error !== "object") {
+    return "Unknown process error.";
+  }
+  const maybeError = error as {
+    message?: unknown;
+    code?: unknown;
+    stdout?: unknown;
+    stderr?: unknown;
+  };
+  const parts: string[] = [];
+  if (typeof maybeError.message === "string" && maybeError.message.trim().length > 0) {
+    parts.push(maybeError.message.trim());
+  }
+  if (typeof maybeError.code === "string" && maybeError.code.trim().length > 0) {
+    parts.push(`code=${maybeError.code}`);
+  } else if (typeof maybeError.code === "number") {
+    parts.push(`code=${String(maybeError.code)}`);
+  }
+  if (typeof maybeError.stderr === "string" && maybeError.stderr.trim().length > 0) {
+    parts.push(`stderr=${maybeError.stderr.trim()}`);
+  }
+  if (parts.length > 0) {
+    return parts.join(" | ");
+  }
   if (error instanceof Error) {
     return error.message;
   }
@@ -425,11 +449,36 @@ async function tryGenerateOfficePreview(buffer: Buffer, ext: string): Promise<Bu
   const pdfPath = path.join(tmpDir, "input.pdf");
   const outputPrefix = path.join(tmpDir, "preview");
   const outputPath = `${outputPrefix}.png`;
+  const officeProfilePath = path.join(tmpDir, "lo-profile");
+  const officeProfileUri = `file://${officeProfilePath}`;
   try {
+    await fs.mkdir(officeProfilePath, { recursive: true });
     await fs.writeFile(inputPath, buffer);
-    await execFileAsync("soffice", ["--headless", "--convert-to", "pdf", "--outdir", tmpDir, inputPath], {
-      timeout: 60_000,
-    });
+    await execFileAsync(
+      "soffice",
+      [
+        "--headless",
+        "--invisible",
+        "--nologo",
+        "--nodefault",
+        "--nolockcheck",
+        "--norestore",
+        `-env:UserInstallation=${officeProfileUri}`,
+        "--convert-to",
+        "pdf:writer_pdf_Export",
+        "--outdir",
+        tmpDir,
+        inputPath,
+      ],
+      {
+        timeout: 20_000,
+        env: {
+          ...process.env,
+          HOME: tmpDir,
+          TMPDIR: tmpDir,
+        },
+      },
+    );
     await execFileAsync("pdftoppm", ["-f", "1", "-singlefile", "-png", pdfPath, outputPrefix], {
       timeout: 20_000,
     });

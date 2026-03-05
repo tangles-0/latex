@@ -16,8 +16,8 @@
     "cdk:bootstrap:prod": "./scripts/infra/bootstrap-cdk.sh prod",
     "infra:image:push:dev": "./scripts/infra/build-and-push-image.sh dev",
     "infra:image:push:prod": "./scripts/infra/build-and-push-image.sh prod",
-    "infra:deploy:dev:app": "bash ./scripts/infra/deploy-app.sh dev",
-    "infra:deploy:prod:app": "bash ./scripts/infra/deploy-app.sh prod"
+    "infra:deploy:dev": "bash ./scripts/infra/deploy-app.sh dev",
+    "infra:deploy:prod": "bash ./scripts/infra/deploy-app.sh prod"
   },
   "dependencies": {
     "@aws-sdk/client-cost-explorer": "^3.996.0",
